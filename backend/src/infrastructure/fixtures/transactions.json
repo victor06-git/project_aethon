@@ -1,0 +1,19 @@
+[
+  { "id": "t01", "date": "2026-11-13", "merchant": "K-Market", "category": "groceries", "amount": -38.54 },
+  { "id": "t02", "date": "2026-11-13", "merchant": "Wolt", "category": "food_delivery", "amount": -24.90 },
+  { "id": "t03", "date": "2026-11-12", "merchant": "S-Market", "category": "groceries", "amount": -61.75 },
+  { "id": "t04", "date": "2026-11-12", "merchant": "Bolt", "category": "taxi", "amount": -14.20 },
+  { "id": "t05", "date": "2026-11-12", "merchant": "Kino Kosmos", "category": "leisure", "amount": -18.00 },
+  { "id": "t06", "date": "2026-11-11", "merchant": "Employer Oy", "category": "salary", "amount": 2850.00 },
+  { "id": "t07", "date": "2026-11-10", "merchant": "HSL", "category": "transport", "amount": -36.30 },
+  { "id": "t08", "date": "2026-11-09", "merchant": "ABC", "category": "fuel", "amount": -54.12 },
+  { "id": "t09", "date": "2026-11-08", "merchant": "Foodora", "category": "food_delivery", "amount": -19.50 },
+  { "id": "t10", "date": "2026-11-08", "merchant": "Netflix", "category": "subscriptions", "amount": -12.99 },
+  { "id": "t11", "date": "2026-11-07", "merchant": "Prisma", "category": "groceries", "amount": -102.20 },
+  { "id": "t12", "date": "2026-11-06", "merchant": "Bolt", "category": "taxi", "amount": -22.80 },
+  { "id": "t13", "date": "2026-11-04", "merchant": "Taxi Central", "category": "taxi", "amount": -9.60 },
+  { "id": "t14", "date": "2026-11-03", "merchant": "Wolt", "category": "food_delivery", "amount": -31.00 },
+  { "id": "t15", "date": "2026-11-02", "merchant": "Football ticket", "category": "leisure", "amount": -7.00 },
+  { "id": "t16", "date": "2026-11-02", "merchant": "Landlord", "category": "housing", "amount": -850.00 },
+  { "id": "t17", "date": "2026-11-01", "merchant": "Mortgage payment", "category": "loan", "amount": -680.00 }
+]

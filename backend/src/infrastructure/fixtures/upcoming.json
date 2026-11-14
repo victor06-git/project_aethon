@@ -1,0 +1,5 @@
+[
+  { "id": "u1", "name": "Electricity", "date": "2026-11-18", "amount": 46.1 },
+  { "id": "u2", "name": "Phone bill", "date": "2026-11-21", "amount": 24.9 },
+  { "id": "u3", "name": "Rent", "date": "2026-12-01", "amount": 850 }
+]

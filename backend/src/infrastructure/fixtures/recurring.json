@@ -1,0 +1,6 @@
+[
+  { "name": "Mortgage", "amount": 680, "day": 1 },
+  { "name": "Rent", "amount": 850, "day": 2 },
+  { "name": "Gym", "amount": 39, "day": 10 },
+  { "name": "Netflix", "amount": 12.99, "day": 8 }
+]
