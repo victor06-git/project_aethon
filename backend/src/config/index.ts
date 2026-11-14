@@ -38,10 +38,16 @@ export const config = {
   provider,
   gemini: {
     apiKey,
-    model: env.REVI_LLM_MODEL || 'gemini-flash-latest',
+    model: env.REVI_LLM_MODEL || 'gemini-2.5-flash',
     baseUrl: env.REVI_GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com',
-    timeoutMs: Number(env.REVI_LLM_TIMEOUT_MS) || 8000
+    timeoutMs: Number(env.REVI_LLM_TIMEOUT_MS) || 8000,
+    // The trainer agent makes several calls per answer (tools, then text), so it gets longer.
+    agentTimeoutMs: Number(env.REVI_AGENT_TIMEOUT_MS) || 20000
   },
+  // Exa web search: live prices and benchmarks for the trainer. Off without a key.
+  exa: { apiKey: env.EXA_API_KEY || '', baseUrl: env.REVI_EXA_BASE_URL || 'https://api.exa.ai', timeoutMs: Number(env.REVI_EXA_TIMEOUT_MS) || 8000 },
+  // Only needed when the frontend is served from another origin than the API.
+  corsOrigin: env.REVI_CORS_ORIGIN || '',
   openai: {
     url: env.REVI_LLM_URL || '',
     key: env.REVI_LLM_KEY || '',

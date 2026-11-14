@@ -1,7 +1,8 @@
 // Model: everything one phone knows, and the only code that talks to the API.
 // React components subscribe through the hooks in ./hooks.ts.
 import { request } from '@transport';
-import type { Answer, Suggestion } from '../../../backend/src/domain/types';
+import type { Answer, ChatTurn } from '../../../backend/src/domain/types';
+import type { Cashflow, TrainerReply, TrainerState } from '../../../backend/src/domain/trainer';
 
 export type Loaded<T> = T | { __error: string } | undefined;
 export const isError = (d: unknown): d is { __error: string } => !!d && typeof d === 'object' && '__error' in d;
@@ -9,16 +10,40 @@ export const isError = (d: unknown): d is { __error: string } => !!d && typeof d
 export type ChatMessage =
   | { role: 'user'; text: string }
   | { role: 'bot'; pending: true }
-  | { role: 'bot'; answer: Answer };
+  | { role: 'bot'; answer: Answer }
+  | { role: 'bot'; error: string; retry: () => void };
 
 export interface CityState { days: number; compare: string; anim: number[][] | null }
+export type CashflowView = Cashflow & { disclaimer: string };
+
+// The trainer state (corrections, goal in progress, agreed plan) lives in this browser and
+// travels with each request: the API keeps nothing between calls.
+const STORE_KEY = 'revi-trainer-v1';
+const EMPTY: TrainerState = { corrections: [], draft: null, plan: null, multiBank: false };
+
+function loadTrainer(): TrainerState {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    return raw ? { ...EMPTY, ...JSON.parse(raw) } : EMPTY;
+  } catch {
+    return EMPTY;   // storage blocked or unreadable: start fresh
+  }
+}
+
+function saveTrainer(state: TrainerState) {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch { /* storage may be blocked */ }
+}
 
 export class PhoneModel {
   private cache = new Map<string, unknown>();
   private pending = new Set<string>();
   private listeners = new Set<() => void>();
+  private flow: Loaded<CashflowView>;
+  private flowState: TrainerState | null = null;   // the trainer state `flow` was computed for
+  private flowLoading = false;
   chat: ChatMessage[] = [];
   city: CityState = { days: 0, compare: '', anim: null };
+  trainer: TrainerState = loadTrainer();
   version = 0;
 
   subscribe = (fn: () => void) => { this.listeners.add(fn); return () => { this.listeners.delete(fn); }; };
@@ -42,22 +67,89 @@ export class PhoneModel {
   fetch<T>(path: string): Promise<T> { return request<T>('GET', path); }
   post<T>(path: string, body: unknown): Promise<T> { return request<T>('POST', path, body); }
 
-  suggestions(): Suggestion[] | null {
-    const boot = this.data<{ suggestions: Suggestion[] }>('/api/bootstrap');
-    return boot && !isError(boot) ? boot.suggestions : null;
+  // ---- Trainer ----
+
+  private setTrainer(state: TrainerState) { this.trainer = state; saveTrainer(state); }
+
+  /** A change made on this device only (for example dropping the goal in progress). */
+  patchTrainer(patch: Partial<TrainerState>) { this.setTrainer({ ...this.trainer, ...patch }); this.emit(); }
+
+  // The three baskets, safe-to-spend and safe-to-save for the current trainer state.
+  // While new figures load after a change, the previous ones stay on screen.
+  cashflow(): Loaded<CashflowView> {
+    if (this.flowState !== this.trainer && !this.flowLoading) {
+      const state = this.trainer;
+      this.flowLoading = true;
+      request<CashflowView>('POST', '/api/trainer/cashflow', { state })
+        .then((flow) => { this.flow = flow; this.flowState = state; })
+        .catch((e: Error & { status?: number }) => {
+          // A stored state the server no longer accepts (after an update) is dropped once.
+          if (e.status === 400 && state !== EMPTY) { this.setTrainer(EMPTY); return; }
+          this.flow = { __error: e.message };
+          this.flowState = state;
+        })
+        .finally(() => { this.flowLoading = false; this.emit(); });
+    }
+    return this.flow;
   }
 
-  // Coach conversation. The answer contract is described in docs/API.md.
-  async ask(question: string) {
-    this.chat = [...this.chat, { role: 'user', text: question }, { role: 'bot', pending: true }];
+  get busy(): boolean {
+    const last = this.chat[this.chat.length - 1];
+    return !!last && 'pending' in last;
+  }
+
+  // What the trainer needs of the conversation so far: questions and its own answers.
+  private turns(): ChatTurn[] {
+    return this.chat.flatMap((m): ChatTurn[] => {
+      if (m.role === 'user') return [{ role: 'user', text: m.text }];
+      return 'answer' in m ? [{ role: 'assistant', text: m.answer.text }] : [];
+    });
+  }
+
+  /** A question in the user's own words. The answer contract is described in docs/API.md. */
+  ask(question: string): Promise<void> {
+    const messages: ChatTurn[] = [...this.turns(), { role: 'user', text: question }];
+    return this.exchange(question, () => this.post<TrainerReply>('/api/trainer/chat', { messages, state: this.trainer }), () => { void this.ask(question); });
+  }
+
+  /** A button in the chat: runs one trainer tool and shows what the user "said". */
+  act(said: string, name: string, args: Record<string, unknown> = {}): Promise<void> {
+    return this.exchange(said, () => this.runTool(name, args), () => { void this.act(said, name, args); });
+  }
+
+  /** A control outside the chat (toggle, slider, select): runs one tool and returns its answer. */
+  async apply(name: string, args: Record<string, unknown> = {}): Promise<Answer> {
+    const reply = await this.runTool(name, args);
+    this.setTrainer(reply.state);
     this.emit();
-    let answer: Answer;
+    return reply.answer;
+  }
+
+  /** Removes a failed exchange from the chat and sends it again. */
+  retry(message: ChatMessage) {
+    if (!('error' in message)) return;
+    const at = this.chat.indexOf(message);
+    this.chat = this.chat.filter((_, i) => i !== at && i !== at - 1);
+    message.retry();
+  }
+
+  private runTool(name: string, args: Record<string, unknown>): Promise<TrainerReply> {
+    return this.post<TrainerReply>('/api/trainer/action', { action: { name, args }, state: this.trainer });
+  }
+
+  private async exchange(said: string, send: () => Promise<TrainerReply>, retry: () => void) {
+    if (this.busy) return;
+    this.chat = [...this.chat, { role: 'user', text: said }, { role: 'bot', pending: true }];
+    this.emit();
+    let reply: ChatMessage;
     try {
-      answer = await this.post<Answer>('/api/coach/messages', { question });
+      const { answer, state } = await send();
+      this.setTrainer(state);
+      reply = { role: 'bot', answer };
     } catch (err) {
-      answer = { type: 'clarify', text: (err as Error).message, examples: [] };
+      reply = { role: 'bot', error: (err as Error).message, retry };
     }
-    this.chat = [...this.chat.slice(0, -1), { role: 'bot', answer }];
+    this.chat = [...this.chat.slice(0, -1), reply];
     this.emit();
   }
 }

@@ -3,6 +3,7 @@
 import { httpError } from '../../domain/types';
 import type { BankService } from '../../application/bankService';
 import type { CoachService } from '../../application/coachService';
+import type { TrainerService } from '../../application/trainerService';
 
 type Query = Record<string, string>;
 type Handler = (params: Record<string, string>, query: Query, body: any) => unknown;
@@ -14,8 +15,14 @@ function compile(method: string, pattern: string, handler: Handler): Route {
   return { method, re, keys, handler };
 }
 
-export function createRouter({ bank, coach }: { bank: BankService; coach: CoachService }) {
+export function createRouter({ bank, coach, trainer }: { bank: BankService; coach: CoachService; trainer: TrainerService }) {
   const routes: Route[] = [
+    // Personal Economic Trainer. The client keeps the trainer state and sends it with each request.
+    compile('GET', '/api/trainer/status', () => trainer.status()),
+    compile('GET', '/api/trainer/cashflow', () => trainer.cashflow(undefined)),
+    compile('POST', '/api/trainer/cashflow', (p, q, body) => trainer.cashflow(body)),
+    compile('POST', '/api/trainer/chat', (p, q, body) => trainer.chat(body)),
+    compile('POST', '/api/trainer/action', (p, q, body) => trainer.action(body)),
     // Banking
     compile('GET', '/api/bootstrap', () => ({ bank: bank.bank(), profile: bank.profile(), data: bank.dataSource(), suggestions: coach.suggestions(), safeToSpend: coach.safeToSpend() })),
     compile('GET', '/api/home', () => bank.home()),

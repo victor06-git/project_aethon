@@ -82,6 +82,27 @@ then answer it in `application/coachService.ts` (fact/action) or add a scenario 
 - Still demo data: cards, loans, bonus, offers, upcoming and recurring payments, scenarios, safe-to-spend.
 - The standalone file always uses fixtures (no file access in the browser).
 
+## Personal Economic Trainer
+
+```
+domain/        cashflow.ts (three baskets, safe-to-spend math)   goals.ts (simulator, what-ifs)
+               spending.ts (queries, spender profile)            trainer.ts (types)   trainerState.ts (validation)
+application/   trainerTools.ts (the tools: one place that runs them)   trainerRules.ts (keyword fallback)
+               goalResearch.ts (what to ask Exa about a goal, and which answers may enter the plan)
+               trainerService.ts (chat, action, cashflow)              grounding.ts (figures must come from tools)
+infrastructure llm/geminiAgent.ts (Gemini function calling, @google/genai)   research/exaResearch.ts (Exa)
+               repositories/fixtureExternal.ts (demo account at another bank, PSD2)
+frontend       views/revi/TrainerCards.tsx, TrainerScreens.tsx (baskets, plan + sliders), Assistant.tsx (chat), ReviCard.tsx (header)
+```
+
+- One set of tools, three callers: Gemini (function calling), the keyword rules (no key, or the model failed)
+  and the UI (`POST /api/trainer/action` for buttons, toggles and sliders).
+- The server keeps no user state. The client holds the trainer state and sends it with each request;
+  `trainerState.ts` validates it. This is what lets the API run as a Vercel function.
+- The model never supplies a figure: tools compute them, and `grounding.ts` rejects model text whose euro amounts
+  or percentages are not in the tool results. A web figure is applied only with a quote found in its source.
+- Ports: `AgentModel`, `ResearchProvider`, `ExternalAccounts` in `application/ports.ts`.
+
 ## Model
 
 - `GEMINI_API_KEY` in `.env` (git-ignored). `REVI_LLM_PROVIDER=auto` uses Gemini only when a key exists.

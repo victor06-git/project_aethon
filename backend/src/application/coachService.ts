@@ -81,6 +81,8 @@ export function createCoachService({ engine, transactions, rules, model = null, 
       const { route: r, source } = await route(q);
       return { ...answer(r), source };
     },
+    /** The answer for an already decided route (the trainer routes with its own tools). */
+    answerRoute: (r: Route): Answer => answer(r),
     suggestions: () => engine.suggestions(),
     safeToSpend: () => engine.safeToSpend(),
     expenses: () => engine.expenses(),

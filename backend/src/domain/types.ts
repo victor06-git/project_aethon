@@ -14,12 +14,15 @@ export interface Transaction {
   merchantId?: string | null;
 }
 
+import type { AgreedPlan, BasketTotal, CashLine, GoalDraft, GoalScenario, MathStep, NextStep, PlanChoice, Source } from './trainer';
+
 export interface Account {
   id: string;
   name: string;
   iban: string;
   balance: number;
   kind: string;
+  bank?: string;         // set for accounts at other banks (PSD2)
 }
 
 export type Intent = 'fact' | 'forecast' | 'action' | 'clarify';
@@ -61,10 +64,24 @@ export interface CityPoint {
 
 export interface Letter { subject: string; body: string }
 
-// The coach answer contract (docs/API.md).
+export interface ChatTurn { role: 'user' | 'assistant'; text: string }
+
+export type AnswerType = Intent | 'cashflow' | 'brief' | 'scenario' | 'plan' | 'research' | 'chat';
+
+// The answer contract (docs/API.md). The trainer adds the optional cards below.
 export interface Answer {
-  type: Intent;
+  type: AnswerType;
   text: string;
+  steps?: MathStep[];            // safe-to-spend math
+  baskets?: BasketTotal[];       // the three baskets with their lines
+  review?: CashLine[];           // assumptions the user may want to correct
+  goal?: GoalDraft;
+  scenarios?: GoalScenario[];    // comparison cards
+  sources?: Source[];            // web citations
+  plan?: AgreedPlan;
+  choices?: PlanChoice[];         // ways to respond when the plan has room or is short
+  nextStep?: NextStep;           // a prepared next step
+  followUps?: string[];
   figure?: string;
   range?: string;
   confidence?: string;
