@@ -1,42 +1,59 @@
-"""Kaiku Finance agent: LangGraph agent with Exa web search and a spending-data tool.
+"""Kaiku Finance: a fixed route -> retrieve -> answer pipeline (at most 2 model calls per question).
 
-Routing idea (two sources of knowledge + the user's own data):
-    - [DATA]  the user's money            -> `query_spending` (never estimated by the model)
-    - [WEB n] facts that change or are local, or anything used in a letter/claim -> `exa_search`
-    - [MODEL] timeless, non-local concepts -> answered from training, no tools
+    question
+       |
+    1. ROUTE     one small Gemini call -> a typed decision (route + search/data parameters)
+       |         + a code guardrail that can only push a decision TOWARDS the web
+       |
+       |-- static   -> the router already wrote the answer from training      [MODEL]  1 call
+       |-- clarify  -> the router asks one question back                               1 call
+       |-- web      -> Exa search (code)        -> 2. ANSWER from the evidence [WEB n] 2 calls
+       |-- data     -> pandas totals (code)     -> 2. ANSWER from the evidence [DATA]  2 calls
+       `-- both     -> Exa + pandas (code)      -> 2. ANSWER from the evidence         2 calls
 
-The route is decided by the TYPE of data (fixed rules in the system prompt), never by how
-confident the model feels.
+Exa is the base: `web` is the default route and every doubt, parse failure or guardrail hit
+goes to Exa. Training data is used only for timeless, non-local questions.
+
+Gemini does three things only: interpret the prompt (router), keep tokens low (it never sees
+tool schemas, URLs or raw pages) and write the answer from the evidence. Searching, arithmetic,
+the source list and the [MODEL] label are done in code.
 
 Contains:
-    1. search_exa(...)       -> one Exa call, normalised to plain dicts (reused by kaiku_eval.py)
-    2. make_exa_tool(...)    -> compact `exa_search` tool (few tokens in, few tokens out)
-    3. make_data_tool(...)   -> `query_spending` tool over a transactions DataFrame
-    4. create_agent(...)     -> builds and compiles the agent
-    5. run_agent(...)        -> runs one question and returns the final answer
+    1. search_exa / format_evidence  -> Exa call and the compact evidence text
+    2. spending_summary              -> totals of the user's transactions (pandas)
+    3. Route + force_web             -> the router's decision and the code guardrail
+    4. Kaiku / create_agent          -> the pipeline: .route(question) and .ask(question)
 """
 
+import copy
 import getpass
 import json
-import operator
 import os
 import random
+import re
 import sys
+import time
+from dataclasses import dataclass, field
 from datetime import date, timedelta
+from pathlib import Path
 from typing import Literal, Optional
+from urllib.parse import urlparse
 
 import pandas as pd
 from dotenv import load_dotenv
 from langchain.chat_models import init_chat_model
-from langchain.messages import AnyMessage, HumanMessage, SystemMessage, ToolMessage
-from langchain.tools import tool
-from langgraph.graph import END, START, StateGraph
-from typing_extensions import Annotated, TypedDict
+from langchain.messages import HumanMessage, SystemMessage
+from pydantic import BaseModel
 
-MODEL_NAME = "claude-haiku-4-5-20251001"
-MODEL_CUTOFF = "July 2025"  # knowledge cutoff of the model above; change both together
+MODEL_NAME = "gemini-3.5-flash"
+MODEL_CUTOFF = "January 2025"  # knowledge cutoff of the model above; change both together
 
-# Official / authoritative Finnish sources used when the model asks for `official=True`.
+# Thinking effort per step ("minimal" | "low" | "medium" | "high", None = model default).
+# Thinking tokens are billed as output, so this is the biggest token lever of the model.
+ROUTER_THINKING: Optional[str] = "minimal"
+ANSWER_THINKING: Optional[str] = "low"
+
+# Official / authoritative Finnish sources used when the router asks for `official`.
 OFFICIAL_DOMAINS = [
     "finlex.fi",              # legislation
     "kela.fi",                # benefits
@@ -51,24 +68,71 @@ OFFICIAL_DOMAINS = [
 
 
 # ---------------------------------------------------------------------------
-# Shared agent state
+# Keys and model
 # ---------------------------------------------------------------------------
-class MessagesState(TypedDict):
-    messages: Annotated[list[AnyMessage], operator.add]
-    llm_calls: int
+def _load_env() -> None:
+    """Loads the keys from `.env` (or a file named `env`) in the project root or the cwd."""
+    load_dotenv()
+    root = Path(__file__).resolve().parents[2]  # src/project_aethon/ -> project root
+    for name in (".env", "env"):
+        if (root / name).is_file():
+            load_dotenv(root / name)
+
+
+def _gemini_key() -> Optional[str]:
+    return os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
 
 
 def _ensure_api_keys(model_name: str = MODEL_NAME) -> None:
-    """Loads .env and asks for any missing key."""
-    load_dotenv()
+    """Loads the env file and asks for any missing key."""
+    _load_env()
+    if model_name.startswith("gemini") and not _gemini_key():
+        os.environ["GEMINI_API_KEY"] = getpass.getpass("Gemini API key: ")
     if model_name.startswith("claude") and not os.environ.get("ANTHROPIC_API_KEY"):
         os.environ["ANTHROPIC_API_KEY"] = getpass.getpass("Anthropic API key: ")
     if not os.environ.get("EXA_API_KEY"):
         os.environ["EXA_API_KEY"] = getpass.getpass("Exa API key: ")
 
 
+def make_model(model_name: str = MODEL_NAME, thinking: Optional[str] = None,
+               temperature: Optional[float] = None, **model_kwargs):
+    """Chat model. Gemini goes through `langchain-google-genai` with the key in GEMINI_API_KEY.
+
+    thinking: effort for Gemini ("minimal".."high"); mapped to `thinking_level` on Gemini 3+
+        and to `thinking_budget` on Gemini 2.5. None keeps the model default.
+    temperature: None keeps the model default (recommended for Gemini 3+).
+    Other models supported by `init_chat_model` work too: pass model_provider=... (and
+    base_url/api_key for an OpenAI-compatible endpoint such as Gemma on Verda).
+    """
+    _ensure_api_keys(model_name)
+    if model_name.startswith("gemini"):
+        model_kwargs.setdefault("model_provider", "google_genai")
+        model_kwargs.setdefault("api_key", _gemini_key())
+        if thinking and model_name.startswith("gemini-2.5"):
+            model_kwargs.setdefault("thinking_budget", {"minimal": 0, "low": 512, "medium": 2048}.get(thinking, -1))
+        elif thinking:
+            model_kwargs.setdefault("thinking_level", thinking)
+    if temperature is not None:
+        model_kwargs["temperature"] = temperature
+    return init_chat_model(model_name, **model_kwargs)
+
+
+def message_text(m) -> str:
+    """Text of a message; if the content comes in blocks, joins the text parts."""
+    c = m.content
+    if isinstance(c, list):
+        c = "".join(b.get("text", "") if isinstance(b, dict) else str(b) for b in c)
+    return c or ""
+
+
+def _usage(m) -> dict:
+    u = getattr(m, "usage_metadata", None) or {}
+    return {"in": u.get("input_tokens", 0) or 0, "out": u.get("output_tokens", 0) or 0,
+            "reasoning": (u.get("output_token_details") or {}).get("reasoning", 0) or 0}
+
+
 # ---------------------------------------------------------------------------
-# 1. Exa search (plain function, no LLM involved)
+# 1. Exa search (code only, no model involved)
 # ---------------------------------------------------------------------------
 _exa_client = None
 
@@ -87,7 +151,7 @@ def get_exa_client():
 def search_exa(
     query: str,
     num_results: int = 3,
-    highlight_chars: int = 500,
+    highlight_chars: int = 300,
     include_domains: Optional[list[str]] = None,
     recent_days: Optional[int] = None,
     search_type: str = "auto",
@@ -97,14 +161,10 @@ def search_exa(
 ) -> dict:
     """One Exa search, normalised to {"results": [{title, url, published, snippets}], "cost"}.
 
-    Token levers:
-        - highlight_chars: Exa returns only the passages relevant to the query (highlights),
-          capped at this many characters per result. This is the main saving vs full text.
-        - full_text_chars: if set, asks for page text instead of highlights (for comparison).
-        - num_results: fewer results = fewer tokens re-sent on every later LLM call.
-    Freshness levers:
-        - recent_days: only pages published in the last N days.
-        - max_age_hours: 0 forces a live crawl, None uses Exa's default cache policy.
+    Token levers: `highlight_chars` (Exa returns only the passages relevant to the query),
+    `num_results`, and `full_text_chars` (page text instead of highlights, for comparison).
+    Freshness levers: `recent_days` (published in the last N days) and `max_age_hours`
+    (0 forces a live crawl). `search_type`: "auto", or "lite" for a cheaper, faster search.
     """
     if full_text_chars:
         contents: dict = {"text": {"max_characters": full_text_chars}}
@@ -138,81 +198,34 @@ def search_exa(
     return {"query": query, "results": results, "cost": getattr(cost, "total", None)}
 
 
-def format_results(results: list[dict], snippet_chars: int = 500) -> str:
-    """Compact, numbered text for the LLM: `[n] title | url | published` + quoted passages.
+def _domain(url: str) -> str:
+    return urlparse(url).netloc.removeprefix("www.")
 
-    The number is what the model cites as [WEB n]. No ids, scores or metadata.
+
+def format_evidence(results: list[dict], snippet_chars: int = 300) -> str:
+    """Numbered evidence for the model: `[n] domain | title | date` + quoted passages.
+
+    URLs are left out on purpose: the model cites [WEB n] and the code adds the source list,
+    which saves tokens and makes it impossible to output an invented link.
     """
-    if not results:
-        return "No relevant results."
     lines = []
     for i, r in enumerate(results, start=1):
-        head = f"[{i}] {r['title']} | {r['url']}"
+        head = f"[{i}] {_domain(r['url'])} | {r['title']}"
         if r.get("published"):
-            head += f" | published {r['published']}"
+            head += f" | {r['published']}"
         lines.append(head)
         budget = snippet_chars
         for s in r["snippets"]:
             s = " ".join(s.split())[:budget]
             if not s:
                 break
-            lines.append(f'    "{s}"')
+            lines.append(f'"{s}"')
             budget -= len(s)
     return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
-# 2. `exa_search` tool (what the LLM sees)
-# ---------------------------------------------------------------------------
-def make_exa_tool(
-    num_results: int = 3,
-    highlight_chars: int = 500,
-    official_domains: Optional[list[str]] = None,
-    search_type: str = "auto",
-    max_age_hours: Optional[int] = None,
-    full_text_chars: Optional[int] = None,
-):
-    """Builds the `exa_search` tool. Developer-side settings are fixed here; the LLM only fills
-    in `query`, `official` and `recent_days`, which keeps the tool schema small.
-
-    The returned tool has a `.stats` dict (calls, results, cost) for the evaluation.
-    """
-    domains = official_domains or OFFICIAL_DOMAINS
-    stats = {"calls": 0, "results": 0, "cost": 0.0}
-
-    @tool
-    def exa_search(query: str, official: bool = False, recent_days: Optional[int] = None) -> str:
-        """Search the live web. Returns numbered sources with quoted passages.
-
-        Args:
-            query: What to find, with the explicit place, subject and year.
-            official: True to search only official Finnish sources (laws, benefits, taxes, central bank).
-            recent_days: Only pages published in the last N days (use for rates, prices, news).
-        """
-        out = search_exa(
-            query,
-            num_results=num_results,
-            highlight_chars=highlight_chars,
-            include_domains=domains if official else None,
-            recent_days=recent_days,
-            search_type=search_type,
-            max_age_hours=max_age_hours,
-            full_text_chars=full_text_chars,
-        )
-        stats["calls"] += 1
-        stats["results"] += len(out["results"])
-        stats["cost"] += out["cost"] or 0.0
-        if not out["results"]:
-            hint = " Retry once with official=false." if official else ""
-            return "No relevant results." + hint
-        return format_results(out["results"], full_text_chars or highlight_chars)
-
-    exa_search.stats = stats  # type: ignore[attr-defined]
-    return exa_search
-
-
-# ---------------------------------------------------------------------------
-# 3. Spending data: sample transactions + `query_spending` tool
+# 2. Spending data (pandas; the model never does this arithmetic)
 # ---------------------------------------------------------------------------
 # Columns expected in the transactions table. Rename here when the real S-Bank dataset arrives.
 COL_DATE, COL_AMOUNT, COL_CATEGORY, COL_MERCHANT = "date", "amount", "category", "merchant"
@@ -227,12 +240,11 @@ BASKETS = {
 
 def sample_transactions(months: int = 6, seed: int = 7, today: Optional[date] = None) -> pd.DataFrame:
     """Small synthetic transaction table (amounts in EUR, positive = spent). Placeholder for
-    the S-Bank dataset so the agent can be tested locally."""
+    the S-Bank dataset so the pipeline can be tested locally."""
     rng = random.Random(seed)
     today = today or date.today()
-    start = today - timedelta(days=30 * months)
     rows = []
-    d = start
+    d = today - timedelta(days=30 * months)
     while d <= today:
         if d.day == 1:
             rows += [(d, 890.0, "rent", "Landlord"), (d, 39.9, "gym", "Elixia"), (d, 24.9, "phone", "Elisa")]
@@ -269,7 +281,7 @@ def load_transactions(path: Optional[str] = None) -> pd.DataFrame:
 
 def spending_summary(df: pd.DataFrame, category: Optional[str] = None, start_date: Optional[str] = None,
                      end_date: Optional[str] = None, group_by: str = "category") -> dict:
-    """Totals computed in pandas (the LLM never does this arithmetic)."""
+    """Totals of the user's spending for the given filters."""
     d = df
     if start_date:
         d = d[d[COL_DATE] >= pd.Timestamp(start_date)]
@@ -301,162 +313,308 @@ def spending_summary(df: pd.DataFrame, category: Optional[str] = None, start_dat
     return out
 
 
-def make_data_tool(df: pd.DataFrame):
-    """Builds the `query_spending` tool over the given transactions."""
-
-    @tool
-    def query_spending(category: Optional[str] = None, start_date: Optional[str] = None,
-                       end_date: Optional[str] = None,
-                       group_by: Literal["category", "month", "basket", "merchant"] = "category") -> str:
-        """Totals of the user's own spending in EUR, computed from their bank transactions.
-
-        Args:
-            category: One category (e.g. taxi, coffee, food_delivery, rent) or omit for all.
-            start_date: First day, YYYY-MM-DD.
-            end_date: Last day, YYYY-MM-DD.
-            group_by: Breakdown of the total.
-        """
-        return json.dumps(spending_summary(df, category, start_date, end_date, group_by), ensure_ascii=False)
-
-    return query_spending
-
-
 # ---------------------------------------------------------------------------
-# System prompt: routing by type of data + source labels
+# 3. The routing decision: model output + code guardrail
 # ---------------------------------------------------------------------------
-def build_system_prompt(cutoff: str = MODEL_CUTOFF, today: Optional[date] = None) -> str:
-    """Ordered rules; the first that applies wins. Short on purpose: it is re-sent on every call."""
+class Route(BaseModel):
+    """What the router returns. Field meanings are in the router prompt (kept out of the
+    schema so they are not sent twice)."""
+    route: Literal["static", "web", "data", "both", "clarify"]
+    lang: str = "en"
+    answer: Optional[str] = None
+    query: Optional[str] = None
+    official: bool = False
+    recent_days: Optional[int] = None
+    category: Optional[str] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    group_by: Literal["category", "month", "basket", "merchant"] = "category"
+
+
+def router_prompt(categories: list[str], cutoff: str = MODEL_CUTOFF, today: Optional[date] = None) -> str:
     today = today or date.today()
     return (
-        "You are Kaiku, a personal finance coach inside a Finnish banking app.\n"
-        f"Current date: {today.isoformat()}. Your knowledge ends in {cutoff}.\n"
-        "Tools: `query_spending` (the user's own transactions) and `exa_search` (live web).\n\n"
-        "Choose the source by the TYPE of information, never by how confident you feel. "
-        "Apply every rule that matches the question:\n"
-        "1. The user's own money (what they spent, where it goes, their habits): call "
-        "`query_spending`. Never estimate or invent their figures. Resolve relative periods "
-        "(last month, this week) from the current date into explicit dates.\n"
-        "2. ALWAYS call `exa_search`, and never answer from memory, when the fact:\n"
-        "   a) changes over time: interest rates, Euribor, prices, inflation, benefit amounts, "
-        "tax rates, laws and rules, news, anything current, latest, this year or after your cutoff;\n"
-        "   b) depends on place or institution: Finnish law, a municipality, a specific bank or company;\n"
-        "   c) is niche: eligibility requirements, procedures, deadlines, forms;\n"
-        "   d) will be used in a letter, claim or application, even if you think it is stable.\n"
-        "3. ONLY timeless, non-local knowledge (definitions, how compound interest works, what an "
-        "emergency fund is, arithmetic, history before your cutoff): answer directly with NO tools. "
-        "Do not search to double-check it.\n"
-        "4. Searching: put the explicit place, subject and year in the query. Use official=true "
-        "for laws, benefits, taxes and central-bank data; if it returns nothing, retry once with "
-        "official=false. Use recent_days for rates, prices and news.\n"
-        "5. If the search finds nothing reliable, say so plainly. Do not fill the gap from memory.\n"
-        "6. If the question is unclear, ask one clarifying question instead of guessing.\n\n"
-        "Labels: end every factual sentence with exactly one label showing where it comes from:\n"
-        "   [WEB n]  from search result n. Use only facts present in the results.\n"
-        "   [DATA]   from `query_spending`.\n"
-        "   [MODEL]  your general knowledge.\n"
-        "If you used any [WEB n], finish with a line 'Sources:' followed by one line per source "
-        "used, as 'n. title - url', copying the url exactly from the results.\n"
-        "Lead with the direct answer and one headline figure. Keep it short. "
-        "Do not give investment advice. Answer in the language of the user."
+        f"You route questions for Kaiku, a finance coach in a Finnish banking app. Today: "
+        f"{today.isoformat()}. Your knowledge ends: {cutoff}.\n"
+        "Choose by the TYPE of information, not by how sure you feel. Routes:\n"
+        "- data: the user's own spending or transactions.\n"
+        "- both: needs the user's spending AND an outside fact.\n"
+        f"- static: ONLY timeless, non-local knowledge (definitions, how something works, "
+        f"arithmetic, history before {cutoff}). Write `answer`: max 3 sentences, user's language.\n"
+        "- clarify: too vague to act on. Write one question in `answer`.\n"
+        "- web: everything else, and the default. Anything that changes over time (rates, prices, "
+        "benefits, taxes, laws, news), depends on a place or institution, is niche (requirements, "
+        "deadlines), or will go into a letter, claim or application. When in doubt: web.\n"
+        "Fields:\n"
+        "- lang: ISO 639-1 code of the user's language.\n"
+        "- web/both: `query` = English search query with place, subject and year; `official` = true "
+        "for laws, benefits, taxes or central-bank data; `recent_days` only for rates, prices or news.\n"
+        f"- data/both: `category` = one of {categories} or null for all; `start_date`/`end_date` "
+        "= YYYY-MM-DD resolved from today; `group_by` = category, month, basket or merchant."
     )
 
 
+ANSWER_PROMPT = (
+    "You are Kaiku, a personal finance coach. Answer the QUESTION using ONLY the evidence given.\n"
+    "- Lead with the direct answer and one headline figure. Max 4 sentences, unless the user asks "
+    "for a document such as a letter.\n"
+    "- End every factual sentence with its source: [WEB n] for web source n, [DATA] for the "
+    "user's transactions. Do not write URLs or a source list.\n"
+    "- If the evidence does not answer the question, say so plainly. Never add facts from your "
+    "own knowledge.\n"
+    "- No investment advice. Answer in the user's language."
+)
+
+NO_RESULT = {
+    "en": "I could not find a reliable source for this, so I would rather not guess.",
+    "es": "No he encontrado una fuente fiable para esto, así que prefiero no adivinar.",
+    "fi": "En löytänyt tälle luotettavaa lähdettä, joten en halua arvata.",
+}
+SOURCES_WORD = {"en": "Sources", "es": "Fuentes", "fi": "Lähteet"}
+
+# Guardrail markers. If the router says `static` but the question carries one of these, the
+# code overrides the decision to `web`. It can only move a decision towards Exa.
+_TIME = re.compile(
+    r"\b(today|tonight|now|nowadays|current|currently|latest|recent|recently|right now|as of|"
+    r"at the moment|this (?:year|month|week)|hoy|ahora|actual|actualmente|vigente|"
+    r"este (?:año|mes)|esta semana|últim[oa]s?|tänään|nyt|tällä hetkellä|nykyinen)\b", re.I)
+_PLACE = re.compile(
+    r"\b(finland|finnish|finlandia|finland[eé]s|suomi|suomen|suomessa|helsinki|espoo|vantaa|"
+    r"tampere|turku|oulu|kela|vero|finlex|s-bank|s-pankki|bank of finland)\b", re.I)
+_ACTION = re.compile(
+    r"\b(letter|claim|complaint|appeal|application|draft|carta|reclamaci[oó]n|recurso|solicitud|"
+    r"redacta|kirje|valitus|hakemus)\b", re.I)
+_YEAR = re.compile(r"\b(20\d\d)\b")
+
+
+def force_web(question: str, cutoff: str = MODEL_CUTOFF) -> Optional[str]:
+    """Reason why this question must go to Exa even if the router called it static, or None."""
+    for name, rx in (("time marker", _TIME), ("place or institution", _PLACE), ("document", _ACTION)):
+        m = rx.search(question)
+        if m:
+            return f"{name}: {m.group(0).lower()}"
+    cutoff_year = int(_YEAR.search(cutoff).group(1)) if _YEAR.search(cutoff) else date.today().year
+    late = [y for y in map(int, _YEAR.findall(question)) if y >= cutoff_year]
+    return f"year at or after cutoff: {late[0]}" if late else None
+
+
+def _parse_route(text: str) -> Optional[Route]:
+    """Fallback parser when the structured output did not validate."""
+    m = re.search(r"\{.*\}", text, flags=re.S)
+    try:
+        return Route.model_validate(json.loads(m.group(0))) if m else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
 # ---------------------------------------------------------------------------
-# 4. Create the agent
+# 4. The pipeline
 # ---------------------------------------------------------------------------
-def create_agent(
-    model_name: str = MODEL_NAME,
-    temperature: float = 0,
-    system_prompt: Optional[str] = None,
-    max_llm_calls: int = 8,
-    transactions: Optional[pd.DataFrame] = None,
-    exa_tool=None,
-    # ---- exa_search settings (ignored if `exa_tool` is given) ----
-    num_results: int = 3,
-    highlight_chars: int = 500,
-    **model_kwargs,
-):
-    """Builds and compiles the Kaiku agent.
+@dataclass
+class Decision:
+    route: Route
+    decided_by: str               # "model", "guardrail (...)" or "fallback (...)"
+    usage: dict = field(default_factory=lambda: {"in": 0, "out": 0, "reasoning": 0})
+    seconds: float = 0.0
+    cached: bool = False
 
-    Args:
-        model_name: Any model supported by `init_chat_model`. For an OpenAI-compatible endpoint
-            (e.g. Gemma served on Verda) pass model_provider="openai", base_url=..., api_key=...
-            through **model_kwargs.
-        system_prompt: Custom prompt; defaults to `build_system_prompt()`.
-        max_llm_calls: Upper bound of model calls per question (avoids loops).
-        transactions: DataFrame for `query_spending`; defaults to the synthetic sample.
-        exa_tool: A tool built with `make_exa_tool(...)` to test another configuration.
-        num_results, highlight_chars: Settings of the default `exa_search` tool.
 
-    Returns:
-        The compiled graph, ready for `.invoke({"messages": [...]})`.
-    """
-    _ensure_api_keys(model_name)
-    system_prompt = system_prompt or build_system_prompt()
-    model = init_chat_model(model_name, temperature=temperature, **model_kwargs)
+@dataclass
+class Result:
+    question: str
+    route: str
+    decided_by: str
+    answer: str = ""              # final text shown to the user (labels + source list)
+    body: str = ""                # text written by the model, before the code adds sources
+    query: Optional[str] = None
+    official: bool = False
+    sources: list = field(default_factory=list)   # [{n, title, url, published, snippets}]
+    cited: list = field(default_factory=list)     # source numbers used in the answer
+    data: Optional[dict] = None
+    llm_calls: int = 0            # model calls this question costs (0 if served from cache)
+    tokens: dict = field(default_factory=lambda: {"router_in": 0, "router_out": 0, "answer_in": 0,
+                                                  "answer_out": 0, "reasoning": 0})
+    exa_cost: float = 0.0
+    seconds: dict = field(default_factory=dict)   # {route, retrieve, answer}
+    notes: list = field(default_factory=list)
+    cached: bool = False
 
-    search_tool = exa_tool or make_exa_tool(num_results=num_results, highlight_chars=highlight_chars)
-    data_tool = make_data_tool(transactions if transactions is not None else load_transactions())
-    tools = [data_tool, search_tool]
-    tools_by_name = {t.name: t for t in tools}
-    model_with_tools = model.bind_tools(tools)
+    @property
+    def total_tokens(self) -> int:
+        t = self.tokens
+        return t["router_in"] + t["router_out"] + t["answer_in"] + t["answer_out"]
 
-    def llm_call(state: dict):
-        response = model_with_tools.invoke([SystemMessage(content=system_prompt)] + state["messages"])
-        return {"messages": [response], "llm_calls": state.get("llm_calls", 0) + 1}
+    @property
+    def total_seconds(self) -> float:
+        return round(sum(self.seconds.values()), 2)
 
-    # Any exception (bad arguments, Exa error, unknown tool) goes back to the model as a
-    # ToolMessage with status="error" so it can fix the call instead of crashing the run.
-    def tool_node(state: dict):
-        results = []
-        for tool_call in state["messages"][-1].tool_calls:
-            status = "success"
+
+def _norm(q: str) -> str:
+    return " ".join(q.lower().split())
+
+
+class Kaiku:
+    """Route -> retrieve -> answer. Use `.ask(question)`; `.route(question)` runs only step 1."""
+
+    def __init__(self, model_name: str = MODEL_NAME, transactions: Optional[pd.DataFrame] = None,
+                 num_results: int = 3, highlight_chars: int = 300, search_type: str = "auto",
+                 official_domains: Optional[list[str]] = None, cutoff: str = MODEL_CUTOFF,
+                 router_thinking: Optional[str] = ROUTER_THINKING,
+                 answer_thinking: Optional[str] = ANSWER_THINKING,
+                 cache_ttl: int = 900, **model_kwargs):
+        self.model_name, self.cutoff = model_name, cutoff
+        self.df = transactions if transactions is not None else load_transactions()
+        self.categories = sorted(self.df[COL_CATEGORY].unique())
+        self.num_results, self.highlight_chars, self.search_type = num_results, highlight_chars, search_type
+        self.domains = official_domains or OFFICIAL_DOMAINS
+        self.cache_ttl = cache_ttl
+        self._cache: dict = {}
+        self.stats = {"llm_calls": 0, "exa_calls": 0, "input_tokens": 0, "output_tokens": 0, "exa_cost": 0.0}
+        self._router = make_model(model_name, router_thinking, **model_kwargs).with_structured_output(
+            Route, include_raw=True)
+        self._answerer = make_model(model_name, answer_thinking, **model_kwargs)
+
+    # ---- small helpers ----
+    def _get(self, kind: str, key):
+        hit = self._cache.get((kind, key))
+        return hit[1] if hit and time.time() - hit[0] < self.cache_ttl else None
+
+    def _put(self, kind: str, key, value):
+        self._cache[(kind, key)] = (time.time(), value)
+        return value
+
+    def _count(self, usage: dict) -> None:
+        self.stats["llm_calls"] += 1
+        self.stats["input_tokens"] += usage["in"]
+        self.stats["output_tokens"] += usage["out"]
+
+    # ---- step 1: route (one model call, cached) ----
+    def route(self, question: str) -> Decision:
+        cached = self._get("route", _norm(question))
+        if cached:
+            return Decision(cached.route, cached.decided_by, cached.usage, cached.seconds, cached=True)
+        t0 = time.perf_counter()
+        out = self._router.invoke([SystemMessage(content=router_prompt(self.categories, self.cutoff)),
+                                   HumanMessage(content=question)])
+        usage = _usage(out.get("raw"))
+        self._count(usage)
+        route = out.get("parsed") or _parse_route(message_text(out["raw"]) if out.get("raw") is not None else "")
+        decided_by = "model"
+        if route is None:  # unreadable decision -> Exa with the question as the query
+            route, decided_by = Route(route="web", query=question), "fallback (unreadable decision)"
+        elif route.route == "static":
+            reason = force_web(question, self.cutoff)
+            if reason:
+                route = route.model_copy(update={"route": "web", "answer": None})
+                decided_by = f"guardrail ({reason})"
+            elif not (route.answer or "").strip():
+                route = route.model_copy(update={"route": "web"})
+                decided_by = "fallback (no static answer)"
+        if route.route in ("web", "both") and not (route.query or "").strip():
+            route = route.model_copy(update={"query": question})
+        d = Decision(route, decided_by, usage, round(time.perf_counter() - t0, 2))
+        self._put("route", _norm(question), d)
+        return d
+
+    # ---- step 2: retrieve (code only) ----
+    def _search(self, query: str, official: bool, recent_days: Optional[int], notes: list):
+        """Exa search with cache. Official searches ignore `recent_days` (official pages often
+        carry old or missing dates) and fall back to the open web if they return nothing."""
+        key = (_norm(query), official, None if official else recent_days)
+        hit = self._get("exa", key)
+        if hit is not None:
+            return hit, 0.0
+        cost, results = 0.0, []
+        attempts = [(self.domains, None)] if official else []
+        attempts.append((None, recent_days))
+        for domains, days in attempts:
             try:
-                observation = tools_by_name[tool_call["name"]].invoke(tool_call["args"])
-                if not isinstance(observation, str):
-                    observation = json.dumps(observation, ensure_ascii=False, default=str)
-            except Exception as e:  # noqa: BLE001 - returned to the model, not hidden
-                status = "error"
-                observation = (f"Error calling `{tool_call['name']}`: {type(e).__name__}: {e}. "
-                               "Fix the arguments or try a different query.")
-            results.append(ToolMessage(content=observation, tool_call_id=tool_call["id"],
-                                       name=tool_call["name"], status=status))
-        return {"messages": results}
+                out = search_exa(query, self.num_results, self.highlight_chars, include_domains=domains,
+                                 recent_days=days, search_type=self.search_type)
+            except Exception as e:  # noqa: BLE001 - a failed search is "no evidence", not a crash
+                notes.append(f"Exa error: {type(e).__name__}: {str(e)[:120]}")
+                continue
+            self.stats["exa_calls"] += 1
+            cost += out["cost"] or 0.0
+            results = [r for r in out["results"] if r["snippets"]]
+            if results:
+                break
+            if domains:
+                notes.append("no official results; searched the open web")
+        self.stats["exa_cost"] += cost
+        results = [{"n": i, **r} for i, r in enumerate(results, start=1)]
+        return self._put("exa", key, results), cost
 
-    def should_continue(state: MessagesState) -> Literal["tool_node", "__end__"]:
-        if state.get("llm_calls", 0) >= max_llm_calls:
-            return END
-        if state["messages"][-1].tool_calls:
-            return "tool_node"
-        return END
+    # ---- the whole pipeline ----
+    def ask(self, question: str) -> Result:
+        cached = self._get("result", _norm(question))
+        if cached:
+            res = copy.deepcopy(cached)
+            res.cached, res.llm_calls = True, 0
+            return res
 
-    builder = StateGraph(MessagesState)
-    builder.add_node("llm_call", llm_call)
-    builder.add_node("tool_node", tool_node)
-    builder.add_edge(START, "llm_call")
-    builder.add_conditional_edges("llm_call", should_continue, ["tool_node", END])
-    builder.add_edge("tool_node", "llm_call")
-    return builder.compile()
+        d = self.route(question)
+        r = d.route
+        res = Result(question, r.route, d.decided_by, query=r.query, official=r.official,
+                     llm_calls=1)
+        res.tokens.update(router_in=d.usage["in"], router_out=d.usage["out"], reasoning=d.usage["reasoning"])
+        res.seconds["route"] = d.seconds
+        lang = (r.lang or "en")[:2].lower()
+
+        if r.route in ("static", "clarify"):
+            res.body = (r.answer or "").strip()
+            res.answer = res.body + (" [MODEL]" if r.route == "static" else "")
+            return self._put("result", _norm(question), res)
+
+        t0 = time.perf_counter()
+        if r.route in ("web", "both"):
+            res.sources, res.exa_cost = self._search(r.query, r.official, r.recent_days, res.notes)
+        if r.route in ("data", "both"):
+            try:
+                res.data = spending_summary(self.df, r.category, r.start_date, r.end_date, r.group_by)
+            except Exception as e:  # noqa: BLE001
+                res.data = {"error": f"{type(e).__name__}: {e}"}
+        res.seconds["retrieve"] = round(time.perf_counter() - t0, 2)
+
+        if r.route == "web" and not res.sources:  # nothing found: say so, no second model call
+            res.body = res.answer = NO_RESULT.get(lang, NO_RESULT["en"])
+            return res
+
+        parts = [f"QUESTION: {question}"]
+        if res.sources:
+            parts.append("WEB:\n" + format_evidence(res.sources, self.highlight_chars))
+        elif r.route == "both":
+            parts.append("WEB: no results found.")
+        if res.data is not None:
+            parts.append("DATA (EUR, user's transactions): " + json.dumps(res.data, ensure_ascii=False))
+        t0 = time.perf_counter()
+        msg = self._answerer.invoke([SystemMessage(content=ANSWER_PROMPT), HumanMessage(content="\n\n".join(parts))])
+        usage = _usage(msg)
+        self._count(usage)
+        res.llm_calls += 1
+        res.tokens.update(answer_in=usage["in"], answer_out=usage["out"],
+                          reasoning=res.tokens["reasoning"] + usage["reasoning"])
+        res.seconds["answer"] = round(time.perf_counter() - t0, 2)
+
+        # The source list is written by the code from the numbers the model cited.
+        res.body = message_text(msg).strip()
+        res.cited = sorted({int(n) for n in re.findall(r"\[WEB\s*(\d+)\]", res.body)
+                            if 1 <= int(n) <= len(res.sources)})
+        res.answer = res.body
+        if res.cited:
+            lines = [f"{s['n']}. {s['title']} - {s['url']}" for s in res.sources if s["n"] in res.cited]
+            res.answer += f"\n\n{SOURCES_WORD.get(lang, 'Sources')}:\n" + "\n".join(lines)
+        return self._put("result", _norm(question), res)
 
 
-# ---------------------------------------------------------------------------
-# 5. Run the agent
-# ---------------------------------------------------------------------------
-def message_text(m) -> str:
-    """Text of a message; if the content comes in blocks, joins the text parts."""
-    c = m.content
-    if isinstance(c, list):
-        c = "".join(b.get("text", "") if isinstance(b, dict) else str(b) for b in c)
-    return c
+def create_agent(model_name: str = MODEL_NAME, transactions: Optional[pd.DataFrame] = None, **kwargs) -> Kaiku:
+    """Builds the Kaiku pipeline. See `Kaiku.__init__` for the options."""
+    return Kaiku(model_name=model_name, transactions=transactions, **kwargs)
 
 
-def run_agent(agent, question: str, verbose: bool = False) -> str:
-    """Runs one question and returns the final answer. verbose=True prints every message."""
-    state = agent.invoke({"messages": [HumanMessage(content=question)]})
-    if verbose:
-        for m in state["messages"]:
-            m.pretty_print()
-    return message_text(state["messages"][-1])
+def run_agent(agent: Kaiku, question: str) -> str:
+    """Runs one question and returns the final answer text."""
+    return agent.ask(question).answer
 
 
 def main() -> None:
@@ -464,7 +622,9 @@ def main() -> None:
     question = " ".join(sys.argv[1:]).strip() or input("Question: ").strip()
     if not question:
         raise SystemExit("No question given.")
-    print("\n", run_agent(create_agent(), question))
+    res = create_agent().ask(question)
+    print(f"\n[{res.route} | {res.decided_by} | {res.llm_calls} calls | {res.total_tokens} tokens | "
+          f"{res.total_seconds}s]\n\n{res.answer}")
 
 
 if __name__ == "__main__":

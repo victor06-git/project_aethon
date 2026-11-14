@@ -1,269 +1,189 @@
-"""Evaluating the Kaiku agent: routing, source labels, ToolMessage tokens and Exa settings.
+"""Evaluating the Kaiku pipeline: routing, labels, tokens, speed and Exa settings.
 
 Reuses kaiku_agent.py. Structure:
-    1. Access to tool calls and ToolMessages
-    2. Routing: did it use the right source (model / Exa / user data)?
-    3. Source labels and citations ([WEB n] / [DATA] / [MODEL])
-    4. ToolMessage tokens
-    5. Exa settings: tokens vs hit rate (highlights, text, num_results, domains)
-    6. Agent variants over the same questions
+    1. Guardrail check   (offline, 0 model calls)
+    2. Routing eval      (1 model call per question: only the router runs)
+    3. Full answers      (labels, tokens and seconds of each Result)
+    4. Exa settings      (0 model calls: tokens vs hit rate)
 
-Tokens of a ToolMessage: the API only reports usage per LLM call and every call re-sends the
-whole history, so for call k:  tokens(ToolMessages) = input_k - input_{k-1} - output_{k-1}.
+Every function that calls the model takes a `budget` and stops before exceeding it, so a run
+fits in a daily request quota. `agent.stats["llm_calls"]` is the real count.
 """
 import json
 import re
-import statistics
 
 import pandas as pd
-from langchain.messages import HumanMessage
-from langchain_core.callbacks import get_usage_metadata_callback
 
-from .kaiku_agent import OFFICIAL_DOMAINS, format_results, message_text, search_exa
+from .kaiku_agent import OFFICIAL_DOMAINS, Kaiku, Result, force_web, format_evidence, search_exa
 
-EXA, DATA = "exa_search", "query_spending"
-
-# (question, tools that MUST be used, text expected in the answer or None)
-# set() = answered from training. Check the expected texts before trusting resp_ok.
+# (question, acceptable routes, text expected in the answer or None)
 QUESTIONS = [
-    # --- stable knowledge: no tools ---
-    ("What is a variable interest rate?", set(), None),
-    ("How does compound interest work?", set(), None),
-    ("What is an emergency fund for?", set(), None),
-    ("Which national team won the 2022 World Cup?", set(), "Argentina"),
+    # --- timeless and non-local: training data ---
+    ("What is a variable interest rate?", {"static"}, None),
+    ("How does compound interest work?", {"static"}, None),
+    ("Which national team won the 2022 World Cup?", {"static"}, "Argentina"),
     # --- changes over time or depends on place: Exa ---
-    ("What is the 12-month Euribor today?", {EXA}, None),
-    ("How much is the Kela general housing allowance this year for a single person in Helsinki?", {EXA}, None),
-    ("What is the general VAT rate in Finland right now?", {EXA}, None),
-    ("Can my landlord in Finland raise my rent by 8% in the middle of the contract?", {EXA}, None),
-    # --- will end up in a letter: Exa even if it looks stable ---
+    ("What is the 12-month Euribor today?", {"web"}, None),
+    ("How much is the Kela general housing allowance this year for a single person in Helsinki?", {"web"}, None),
+    ("Can my landlord in Finland raise my rent by 8% in the middle of the contract?", {"web"}, None),
+    # --- goes into a letter: Exa even if it looks stable ---
     ("Write a short letter to my landlord objecting to a rent increase, citing the rule that applies in Finland.",
-     {EXA}, None),
-    # --- the user's own money: data tool ---
-    ("How much did I spend on taxis last month?", {DATA}, None),
-    ("Where is my money going? Split it into the three baskets.", {DATA}, None),
-    # --- mixed: own data + live fact ---
-    ("How much do I pay in rent each month, and what is the average rent in Helsinki right now?", {DATA, EXA}, None),
+     {"web"}, None),
+    # --- the user's own money: transactions ---
+    ("How much did I spend on taxis last month?", {"data"}, None),
+    ("Where is my money going? Split it into the three baskets.", {"data"}, None),
+    # --- own data + live fact ---
+    ("How much do I pay in rent each month, and what is the average rent in Helsinki right now?", {"both"}, None),
 ]
 
-# Nothing reliable exists for these: the agent should say so instead of answering from memory.
-UNANSWERABLE = [
-    "What is the Kela benefit amount for owners of blue hamsters in Zzyzx municipality in 2031?",
-]
+# Nothing reliable exists for this: the answer should say so instead of inventing a figure.
+UNANSWERABLE = "What is the Kela benefit amount for owners of blue hamsters in Zzyzx municipality in 2031?"
 
 # (query, text that must appear in the Exa results). Verify the keys before relying on hit_rate.
 EXA_EVAL = [
-    ("12-month Euribor rate today", "Euribor"),
-    ("Kela general housing allowance amount", "housing allowance"),
+    ("12-month Euribor rate today", "%"),
+    ("Kela general housing allowance amount", "70"),
     ("Finland general VAT rate", "25.5"),
-    ("rent increase rules residential lease Finland", "rent"),
-    ("Finland basic unemployment allowance per day", "unemployment"),
+    ("rent increase rules residential lease Finland", "agree"),
+    ("Finland basic unemployment allowance per day", "per day"),
     ("Bank of Finland governor", "Rehn"),
 ]
 
 
-# ---------------------------------------------------------------------------
-# 1. Access to tool calls and ToolMessages
-# ---------------------------------------------------------------------------
-def _tool_calls(state: dict) -> list[dict]:
-    return [tc for m in state["messages"] if m.type == "ai" for tc in (m.tool_calls or [])]
-
-
-def tools_called(state: dict) -> list[str]:
-    """Names of the tools the model requested, in order."""
-    return [tc["name"] for tc in _tool_calls(state)]
-
-
-def get_tool_messages(state: dict) -> list[dict]:
-    """ToolMessages with their tool and arguments: [{tool, args, content}]."""
-    calls = {tc["id"]: tc for tc in _tool_calls(state)}
-    return [{"tool": calls.get(m.tool_call_id, {}).get("name", "?"),
-             "args": calls.get(m.tool_call_id, {}).get("args", {}),
-             "content": message_text(m)}
-            for m in state["messages"] if m.type == "tool"]
-
-
-def ask(agent, question: str) -> dict:
-    """Runs one question and returns the final state."""
-    return agent.invoke({"messages": [HumanMessage(content=question)]})
-
-
-def show(state: dict) -> None:
-    """Prints tool calls (with arguments) and the final answer."""
-    for t in get_tool_messages(state):
-        print(f"-> {t['tool']}({json.dumps(t['args'], ensure_ascii=False)})  [{len(t['content'])} chars]")
-    print("\n" + message_text(state["messages"][-1]))
+def remaining(agent: Kaiku, budget: int) -> int:
+    """Model calls left in the budget."""
+    return budget - agent.stats["llm_calls"]
 
 
 # ---------------------------------------------------------------------------
-# 2. Routing
+# 1. Guardrail check (offline)
 # ---------------------------------------------------------------------------
-def check(agent, question: str, expect: set, verbose: bool = True) -> dict:
-    """Runs the agent and checks that the set of tools used equals `expect` (set() = no tools)."""
-    state = ask(agent, question)
-    used = set(tools_called(state))
-    state["_ok"] = used == set(expect)
-    if verbose:
-        print(f"[{'OK' if state['_ok'] else 'FAIL'}] expected={sorted(expect) or 'none'} | "
-              f"used={sorted(used) or 'none'} | {question}")
-    return state
+def guardrail_table(questions=QUESTIONS) -> pd.DataFrame:
+    """What the code guardrail does with each question, without calling any API.
 
-
-def routing_eval(agent, questions=QUESTIONS, repeats: int = 1) -> pd.DataFrame:
-    """One row per question: pass rate of the routing, tools used, tokens and label problems."""
+    `forced_to_web` = the reason the question can never be answered from training, or '' if
+    the decision is left to the router. A question expected to be static must have ''.
+    """
     rows = []
-    for question, expect, key in questions:
-        oks, totals, used_all, problems, resp = [], [], set(), [], []
-        for _ in range(repeats):
-            try:
-                with get_usage_metadata_callback() as cb:
-                    st = ask(agent, question)
-            except Exception as e:  # noqa: BLE001
-                print(f"[error] {question[:50]} -> {type(e).__name__}: {str(e)[:80]}")
-                continue
-            used = set(tools_called(st))
-            used_all |= used
-            oks.append(used == set(expect))
-            totals.append(sum(u["input_tokens"] + u["output_tokens"] for u in cb.usage_metadata.values()))
-            problems += label_report(st)["problems"]
-            if key is not None:
-                resp.append(key.lower() in message_text(st["messages"][-1]).lower())
-        rows.append({
-            "question": question[:60],
-            "expected": ",".join(sorted(expect)) or "none",
-            "used": ",".join(sorted(used_all)) or "none",
-            "route_ok": round(sum(oks) / len(oks), 2) if oks else None,
-            "resp_ok": round(sum(resp) / len(resp), 2) if resp else None,
-            "tokens_mean": round(statistics.mean(totals)) if totals else None,
-            "label_problems": "; ".join(sorted(set(problems))),
-        })
+    for question, expected, _ in questions:
+        reason = force_web(question) or ""
+        rows.append({"question": question[:70], "expected": ",".join(sorted(expected)),
+                     "forced_to_web": reason, "ok": not (reason and expected == {"static"})})
     return pd.DataFrame(rows)
 
 
 # ---------------------------------------------------------------------------
-# 3. Source labels and citations
+# 2. Routing eval (router only: 1 call per question)
+# ---------------------------------------------------------------------------
+def routing_eval(agent: Kaiku, questions=QUESTIONS, budget: int = 20) -> pd.DataFrame:
+    """Runs only the router on each question. Decisions are cached, so a later `agent.ask`
+    on the same question does not pay for the routing again."""
+    rows = []
+    for question, expected, _ in questions:
+        row = {"question": question[:60], "expected": ",".join(sorted(expected)), "route": "NOT RUN",
+               "ok": None, "decided_by": "", "query": None, "official": None, "tokens": None, "seconds": None}
+        rows.append(row)
+        if remaining(agent, budget) < 1:
+            continue
+        try:
+            d = agent.route(question)
+        except Exception as e:  # noqa: BLE001 - quota or network: keep what already ran
+            print(f"[stopped] {type(e).__name__}: {str(e)[:150]}")
+            budget = agent.stats["llm_calls"]  # nothing else will run
+            continue
+        r = d.route
+        row.update(route=r.route, ok=r.route in expected, decided_by=d.decided_by,
+                   query=r.query if r.route in ("web", "both") else None,
+                   official=r.official if r.route in ("web", "both") else None,
+                   tokens=d.usage["in"] + d.usage["out"], seconds=d.seconds)
+        print(f"[{'OK' if row['ok'] else 'FAIL'}] {r.route:<7} <- {question[:70]}")
+    return pd.DataFrame(rows)
+
+
+# ---------------------------------------------------------------------------
+# 3. Full answers
 # ---------------------------------------------------------------------------
 _URL = re.compile(r"https?://[^\s)\]>\"']+")
 
 
-def label_report(state: dict) -> dict:
-    """Checks that the labels of the answer match what the agent actually did.
+def label_report(res: Result) -> list[str]:
+    """Problems in the labels of an answer (empty list = fine).
 
-    Problems reported:
-        - [WEB] used without any `exa_search` call (a web label on a memory answer)
-        - `exa_search` returned results but the answer has no [WEB] label or no source URL
-        - [DATA] used without `query_spending`, or the other way round
-        - a URL in the answer that is not in the search results (invented source)
-        - [WEB n] pointing to a result number that does not exist
-        - no label at all
+    The model never sees URLs and the source list is added by the code, so any URL in the
+    text written by the model (`res.body`) is an invented one.
     """
-    answer = message_text(state["messages"][-1])
-    tms = get_tool_messages(state)
-    exa_text = "\n".join(t["content"] for t in tms if t["tool"] == EXA)
-    used = {t["tool"] for t in tms}
-    got_results = bool(_URL.search(exa_text))
-
-    web = re.findall(r"\[WEB\s*(\d+)\]", answer)
-    n_data, n_model = answer.count("[DATA]"), answer.count("[MODEL]")
-    urls = {u.rstrip(".,;") for u in _URL.findall(answer)}
-    source_urls = {u.rstrip(".,;") for u in _URL.findall(exa_text)}
-    max_n = max((int(n) for n in re.findall(r"^\[(\d+)\]", exa_text, flags=re.M)), default=0)
-
+    body = res.body
+    web = [int(n) for n in re.findall(r"\[WEB\s*(\d+)\]", body)]
+    has_data = "[DATA]" in body
     problems = []
-    if web and EXA not in used:
-        problems.append("[WEB] without search")
-    if got_results and not web:
-        problems.append("search results but no [WEB] label")
-    if web and not urls:
-        problems.append("[WEB] without source URL")
-    if n_data and DATA not in used:
-        problems.append("[DATA] without data tool")
-    if DATA in used and not n_data:
-        problems.append("data tool but no [DATA] label")
-    if urls - source_urls:
-        problems.append(f"URL not in results: {sorted(urls - source_urls)}")
-    if any(int(n) > max_n for n in web) and EXA in used:
+    if res.route in ("static", "clarify"):
+        return problems
+    if res.sources and not web:
+        problems.append("web evidence but no [WEB n] label")
+    if any(n < 1 or n > len(res.sources) for n in web):
         problems.append("[WEB n] out of range")
-    if not (web or n_data or n_model):
-        problems.append("no labels")
-    return {"web": len(web), "data": n_data, "model": n_model,
-            "urls": sorted(urls), "problems": problems}
+    if res.data is not None and not has_data:
+        problems.append("data evidence but no [DATA] label")
+    if has_data and res.data is None:
+        problems.append("[DATA] without data")
+    if _URL.search(body):
+        problems.append("URL written by the model")
+    if "[MODEL]" in body:
+        problems.append("[MODEL] in an evidence-based answer")
+    return problems
 
 
-def unanswerable_check(agent, queries=UNANSWERABLE) -> pd.DataFrame:
-    """For questions with no real answer: it should search, and should not cite invented sources.
-    Read the answer: whether it 'says so plainly' is a human judgement."""
+def show(res: Result) -> None:
+    """Prints the decision, the evidence used and the final answer."""
+    t = res.tokens
+    print(f"route: {res.route} | decided by: {res.decided_by} | calls: {res.llm_calls} | "
+          f"tokens: {res.total_tokens} (router {t['router_in']}+{t['router_out']}, "
+          f"answer {t['answer_in']}+{t['answer_out']}, thinking {t['reasoning']}) | "
+          f"{res.total_seconds}s {res.seconds}" + (" | CACHED" if res.cached else ""))
+    if res.query:
+        print(f"search: {res.query!r} | official={res.official} | {len(res.sources)} sources | "
+              f"Exa ${res.exa_cost:.3f}")
+    if res.data is not None:
+        print("data:", json.dumps(res.data, ensure_ascii=False)[:300])
+    for note in res.notes:
+        print("note:", note)
+    print("\n" + res.answer)
+    problems = label_report(res)
+    if problems:
+        print("\nLABEL PROBLEMS:", problems)
+
+
+def ask_all(agent: Kaiku, questions: dict, budget: int = 20) -> dict:
+    """Runs `agent.ask` on {name: question}, stopping before the budget is exceeded.
+    Keeps 2 calls in reserve per question (routing + answer)."""
+    results = {}
+    for name, question in questions.items():
+        if remaining(agent, budget) < 2:
+            print(f"[skipped '{name}'] not enough budget left ({remaining(agent, budget)} calls)")
+            continue
+        try:
+            results[name] = agent.ask(question)
+        except Exception as e:  # noqa: BLE001
+            print(f"[stopped at '{name}'] {type(e).__name__}: {str(e)[:150]}")
+            break
+    return results
+
+
+def results_table(results: dict) -> pd.DataFrame:
+    """One row per Result: route, calls, tokens, seconds and label problems."""
     rows = []
-    for q in queries:
-        st = ask(agent, q)
-        rep = label_report(st)
-        rows.append({"question": q[:60], "searched": EXA in tools_called(st),
-                     "problems": "; ".join(rep["problems"]), "answer": message_text(st["messages"][-1])[:300]})
+    for name, res in results.items():
+        t = res.tokens
+        rows.append({"case": name, "route": res.route, "decided_by": res.decided_by, "calls": res.llm_calls,
+                     "tokens": res.total_tokens, "router_tokens": t["router_in"] + t["router_out"],
+                     "answer_tokens": t["answer_in"] + t["answer_out"], "thinking": t["reasoning"],
+                     "sources": len(res.sources), "cited": len(res.cited), "exa_usd": round(res.exa_cost, 3),
+                     "seconds": res.total_seconds, "label_problems": "; ".join(label_report(res))})
     return pd.DataFrame(rows)
 
 
 # ---------------------------------------------------------------------------
-# 4. ToolMessage tokens
-# ---------------------------------------------------------------------------
-def tool_message_tokens(state: dict) -> list[dict]:
-    """Tokens per ToolMessage = input_k - input_{k-1} - output_{k-1}.
-
-    With parallel tools only the group total is known, so it is split by characters
-    (exact=False). `billed` = tokens x number of LLM calls that re-send that content.
-    """
-    msgs = state["messages"]
-    n_ai = sum(m.type == "ai" for m in msgs)
-    names = {tc["id"]: tc["name"] for tc in _tool_calls(state)}
-    rows, pending, prev, k = [], [], None, 0
-    for m in msgs:
-        if m.type == "tool":
-            pending.append(m)
-        elif m.type == "ai":
-            k += 1
-            u = m.usage_metadata or {}
-            if pending and prev is not None:
-                delta = u.get("input_tokens", 0) - prev.get("input_tokens", 0) - prev.get("output_tokens", 0)
-                total_chars = sum(len(message_text(t)) for t in pending) or 1
-                for t in pending:
-                    n = round(delta * len(message_text(t)) / total_chars)
-                    rows.append({"tool": names.get(t.tool_call_id, "?"), "chars": len(message_text(t)),
-                                 "tokens": n, "billed": n * (n_ai - k + 1), "exact": len(pending) == 1})
-            pending, prev = [], u
-    return rows
-
-
-def token_report(state: dict, verbose: bool = True) -> dict:
-    """Run totals, ToolMessage tokens and their share of the input."""
-    ais = [m for m in state["messages"] if m.type == "ai"]
-    inp = sum((m.usage_metadata or {}).get("input_tokens", 0) for m in ais)
-    out = sum((m.usage_metadata or {}).get("output_tokens", 0) for m in ais)
-    rows = tool_message_tokens(state)
-    billed = sum(r["billed"] for r in rows)
-    rep = {"llm_calls": len(ais), "tool_calls": len(tools_called(state)),
-           "input_tokens": inp, "output_tokens": out, "total_tokens": inp + out,
-           "toolmsg_tokens": sum(r["tokens"] for r in rows), "toolmsg_billed_tokens": billed,
-           "toolmsg_pct_input": round(100 * billed / inp, 1) if inp else 0.0, "detail": rows}
-    if verbose:
-        for k, v in rep.items():
-            if k != "detail":
-                print(f"{k:<24}{v}")
-        for d in rows:
-            print(f"  - {d['tool']:<16} chars={d['chars']:<6} tokens={d['tokens']:<6} "
-                  f"billed={d['billed']:<6} exact={d['exact']}")
-    return rep
-
-
-def schema_tokens(model, tools: list) -> dict:
-    """Input tokens the tool schemas add to every call = input("Hello") with tools - without."""
-    without = model.invoke("Hello").usage_metadata["input_tokens"]
-    return {"without_tools": without,
-            "all_tools": model.bind_tools(tools).invoke("Hello").usage_metadata["input_tokens"] - without,
-            **{t.name: model.bind_tools([t]).invoke("Hello").usage_metadata["input_tokens"] - without
-               for t in tools}}
-
-
-# ---------------------------------------------------------------------------
-# 5. Exa settings: tokens vs hit rate
+# 4. Exa settings: tokens vs hit rate (no model calls)
 # ---------------------------------------------------------------------------
 def tok(x) -> int:
     """Approximate tokens (chars/4) of a text or of a serialisable object."""
@@ -275,28 +195,27 @@ def _hit(results: list[dict], key: str) -> bool:
 
 
 EXA_CONFIGS = [  # (name, parameters of search_exa)
-    ("highlights 500 x3 (default)", {"num_results": 3, "highlight_chars": 500}),
-    ("highlights 250 x3", {"num_results": 3, "highlight_chars": 250}),
-    ("highlights 500 x5", {"num_results": 5, "highlight_chars": 500}),
-    ("highlights 1000 x3", {"num_results": 3, "highlight_chars": 1000}),
+    ("highlights 300 x3 (default)", {"num_results": 3, "highlight_chars": 300}),
+    ("highlights 150 x3", {"num_results": 3, "highlight_chars": 150}),
+    ("highlights 300 x2", {"num_results": 2, "highlight_chars": 300}),
+    ("highlights 500 x3", {"num_results": 3, "highlight_chars": 500}),
     ("full text 3000 x3", {"num_results": 3, "full_text_chars": 3000}),
-    ("highlights 500 x3 official", {"num_results": 3, "highlight_chars": 500, "include_domains": OFFICIAL_DOMAINS}),
-    ("highlights 500 x3 lite", {"num_results": 3, "highlight_chars": 500, "search_type": "lite"}),
+    ("highlights 300 x3 official", {"num_results": 3, "highlight_chars": 300, "include_domains": OFFICIAL_DOMAINS}),
+    ("highlights 300 x3 lite", {"num_results": 3, "highlight_chars": 300, "search_type": "lite"}),
 ]
 
 
 def evaluate_exa_config(name: str, evalset=EXA_EVAL, **params) -> dict:
-    """One Exa configuration over the eval queries: hit rate, tokens sent to the LLM and cost."""
-    chars = params.get("full_text_chars") or params.get("highlight_chars", 500)
-    hits, toks, n_res, cost = [], [], [], 0.0
+    """One Exa configuration over the eval queries: hit rate, evidence tokens and cost."""
+    chars = params.get("full_text_chars") or params.get("highlight_chars", 300)
+    hits, toks, cost = [], [], 0.0
     for q, key in evalset:
         out = search_exa(q, **params)
         hits.append(_hit(out["results"], key))
-        toks.append(tok(format_results(out["results"], chars)))
-        n_res.append(len(out["results"]))
+        toks.append(tok(format_evidence(out["results"], chars)))
         cost += out["cost"] or 0.0
-    return {"config": name, "hit_rate": sum(hits) / len(hits), "mean_tokens": sum(toks) / len(toks),
-            "mean_results": sum(n_res) / len(n_res), "exa_cost_usd": round(cost, 4)}
+    return {"config": name, "hit_rate": sum(hits) / len(hits), "evidence_tokens": sum(toks) / len(toks),
+            "exa_cost_usd": round(cost, 4)}
 
 
 def compare_exa_configs(configs=EXA_CONFIGS, evalset=EXA_EVAL) -> pd.DataFrame:
@@ -308,44 +227,3 @@ def compare_exa_configs(configs=EXA_CONFIGS, evalset=EXA_EVAL) -> pd.DataFrame:
         except Exception as e:  # noqa: BLE001
             print("Failed:", name, "->", str(e)[:120])
     return pd.DataFrame(rows).round(2)
-
-
-# ---------------------------------------------------------------------------
-# 6. Agent variants
-# ---------------------------------------------------------------------------
-def run_variants(variants: dict, questions=QUESTIONS, repeats: int = 1) -> pd.DataFrame:
-    """Runs each agent variant over the same questions and aggregates tokens and quality.
-
-    route_ok = share of questions where it used exactly the expected tools;
-    label_ok = share of answers with no label problems.
-    """
-    rows = []
-    for name, agent in variants.items():
-        totals, ins, outs = [], [], []
-        route_ok = label_ok = n = errors = 0
-        for _ in range(repeats):
-            run_in = run_out = 0
-            for question, expect, _key in questions:
-                try:
-                    with get_usage_metadata_callback() as cb:
-                        st = ask(agent, question)
-                except Exception as e:  # noqa: BLE001
-                    errors += 1
-                    print(f"[error] {name} | {question[:40]} -> {type(e).__name__}: {str(e)[:80]}")
-                    continue
-                run_in += sum(u["input_tokens"] for u in cb.usage_metadata.values())
-                run_out += sum(u["output_tokens"] for u in cb.usage_metadata.values())
-                n += 1
-                route_ok += set(tools_called(st)) == set(expect)
-                label_ok += not label_report(st)["problems"]
-            ins.append(run_in), outs.append(run_out), totals.append(run_in + run_out)
-        rows.append({
-            "variant": name, "runs": repeats,
-            "input_mean": round(statistics.mean(ins)), "output_mean": round(statistics.mean(outs)),
-            "total_mean": round(statistics.mean(totals)),
-            "total_std": round(statistics.stdev(totals)) if len(totals) > 1 else 0,
-            "route_ok": round(route_ok / n, 2) if n else None,
-            "label_ok": round(label_ok / n, 2) if n else None,
-            "errors": errors,
-        })
-    return pd.DataFrame(rows)
