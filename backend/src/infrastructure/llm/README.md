@@ -10,7 +10,7 @@ Contract the rest of the app relies on:
 - `classify(question)` resolves to `{ intent: 'fact'|'forecast'|'action'|'clarify', id: string|null }`.
 - The model never returns figures. Numbers come from the engine and the user's transactions.
 - Supported ids are listed in `prompt.ts`; the application ignores anything else and falls back to the rules.
-- Throwing is fine: the app logs `[kaiku] model failed, using rules: ...` and answers with the rules.
+- Throwing is fine: the app logs `[revi] model failed, using rules: ...` and answers with the rules.
 
 Files:
 - `prompt.ts` — system prompt shared by every adapter.

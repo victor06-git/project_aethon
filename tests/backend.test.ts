@@ -79,7 +79,7 @@ test('City values: today is certain, the forecast gets less certain', () => {
 });
 
 test('CSV adapter reads one customer, balance, investments and taxi trips', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kaiku-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'revi-'));
   const file = path.join(dir, 'tx.csv');
   fs.copyFileSync(path.join(here, 'fixtures', 'sample_transactions.csv'), file);
   const repo = await loadCsvTransactions({ file, customerId: 'CUST00042' });

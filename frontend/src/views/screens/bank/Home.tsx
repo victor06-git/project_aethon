@@ -1,10 +1,10 @@
-// Home: the existing S-mobiili home screen. In Kaiku mode: total balance and the Kaiku card on top.
+// Home: the existing S-mobiili home screen. In Revi mode: total balance and the Revi card on top.
 import { useData } from '../../../models/hooks';
 import { isError } from '../../../models/phoneModel';
 import { useNav } from '../../../controllers/nav';
 import { money } from '../../format';
 import { List, Row, Section, Loading, Failed, Card } from '../../components';
-import { KaikuCard } from '../../kaiku/KaikuCard';
+import { ReviCard } from '../../revi/ReviCard';
 
 export function HomeScreen() {
   const nav = useNav();
@@ -15,14 +15,14 @@ export function HomeScreen() {
     <div className="content">
       <div className="subtitle">Good morning!</div>
       <div className="title">Welcome to S-mobiili</div>
-      {nav.kaiku && (
+      {nav.revi && (
         <>
           <Card><div className="padded">
             <div className="balance-label">Total balance</div>
             <div className="balance-amount">{money(home.totalBalance)}</div>
             <div className="balance-row"><span>Invested</span><strong>{money(home.invested)}</strong></div>
           </div></Card>
-          <KaikuCard />
+          <ReviCard />
         </>
       )}
       <button type="button" className="banner" onClick={() => nav.go('upcoming')}><span>Upcoming payments</span><span>{home.upcomingCount} ›</span></button>

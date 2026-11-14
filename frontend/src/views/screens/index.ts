@@ -1,4 +1,4 @@
-// Screen registry. Kaiku screens are merged in only in Kaiku mode (they replace Invest).
+// Screen registry. Revi screens are merged in only in Revi mode (they replace Invest).
 import type { ComponentType } from 'react';
 import { HomeScreen } from './bank/Home';
 import { BankingScreen, MeScreen, PayScreen, RewardsScreen } from './bank/Tabs';
@@ -9,7 +9,7 @@ import {
   AuthScreen, EinvoicesScreen, HelpScreen, MessagesScreen, NewPaymentScreen, PayslipScreen, PrivateScreen,
   ProfileScreen, SearchScreen, SettingsScreen, TransferScreen, UpcomingScreen, VirtualAssistantScreen
 } from './bank/Services';
-import { ExpensesScreen, InvestKaikuScreen, RecurringScreen } from '../kaiku/KaikuScreens';
+import { ExpensesScreen, InvestReviScreen, RecurringScreen } from '../revi/ReviScreens';
 
 export interface ScreenDef { title: string; Component: ComponentType<{ arg: string | null }> }
 
@@ -49,10 +49,10 @@ const bank: Record<string, ScreenDef> = {
   einvoices: { title: 'E-invoices', Component: EinvoicesScreen }
 };
 
-const kaiku: Record<string, ScreenDef> = {
-  invest: { title: 'Invest', Component: InvestKaikuScreen },
+const revi: Record<string, ScreenDef> = {
+  invest: { title: 'Invest', Component: InvestReviScreen },
   expenses: { title: 'Necessary expenses', Component: ExpensesScreen },
   recurring: { title: 'Recurring expenses', Component: RecurringScreen }
 };
 
-export const screensFor = (withKaiku: boolean): Record<string, ScreenDef> => (withKaiku ? { ...bank, ...kaiku } : bank);
+export const screensFor = (withRevi: boolean): Record<string, ScreenDef> => (withRevi ? { ...bank, ...revi } : bank);

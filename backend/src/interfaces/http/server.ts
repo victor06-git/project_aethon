@@ -9,7 +9,7 @@ import { createContainer } from '../../container';
 import { createLlm } from '../../infrastructure/llm';
 import { loadCsvTransactions } from '../../infrastructure/repositories/csvTransactions';
 
-const log = (msg: string) => console.warn(`[kaiku] ${msg}`);
+const log = (msg: string) => console.warn(`[revi] ${msg}`);
 
 async function loadTransactions() {
   const { source, file, customerId } = config.data;
@@ -59,7 +59,7 @@ async function main() {
     });
   });
   server.listen(config.port, () => {
-    console.log(`Kaiku preview: http://localhost:${config.port}`);
+    console.log(`Revi preview: http://localhost:${config.port}`);
     console.log(model ? `Coach model: ${config.provider} ${config.provider === 'gemini' ? config.gemini.model : ''} (rules as fallback)` : 'Coach model: off, rules only');
   });
 }

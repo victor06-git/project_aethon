@@ -28,16 +28,16 @@ const P: Record<string, string> = {
   send: '<path d="M4 12 20 4.5 15.5 20l-3.5-6.5z"/><path d="m12 13.5 8-9"/>'
 };
 
-// Kaiku mark: an echo. A point with waves repeating outward on both sides, fading with distance.
-// Deliberately not a speech bubble or a sparkle: Kaiku is a money echo, not a chat or "AI" badge.
-const KAIKU_MARK = '<circle cx="12" cy="12" r="2.4" fill="currentColor" stroke="none"/>'
+// Revi mark: an echo. A point with waves repeating outward on both sides, fading with distance.
+// Deliberately not a speech bubble or a sparkle: Revi is a money echo, not a chat or "AI" badge.
+const REVI_MARK = '<circle cx="12" cy="12" r="2.4" fill="currentColor" stroke="none"/>'
   + '<path d="M8.2 8.2a5.4 5.4 0 0 0 0 7.6M15.8 8.2a5.4 5.4 0 0 1 0 7.6"/>'
   + '<path d="M5.3 5.3a9.5 9.5 0 0 0 0 13.4M18.7 5.3a9.5 9.5 0 0 1 0 13.4" opacity=".5"/>';
 
-export type IconName = keyof typeof P | 'kaiku';
+export type IconName = keyof typeof P | 'revi';
 
 export function Icon({ name, size = 22 }: { name: string; size?: number }) {
-  const markup = name === 'kaiku' ? KAIKU_MARK : P[name];
+  const markup = name === 'revi' ? REVI_MARK : P[name];
   if (!markup) return null;
   return (
     <svg className="ico" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"

@@ -1,6 +1,6 @@
 // Frontend build.
 //   npm start      → Node server runs Vite in middleware mode; the app talks to /api over HTTP.
-//   npm run build  → dist/kaiku-preview.html: one self-contained file; the backend core runs in
+//   npm run build  → dist/revi-preview.html: one self-contained file; the backend core runs in
 //                    the browser (offline transport, demo data, rules only).
 import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
@@ -9,13 +9,13 @@ import { fileURLToPath } from 'node:url';
 
 const here = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 
-// The standalone build is one file named kaiku-preview.html (Vite would call it index.html).
+// The standalone build is one file named revi-preview.html (Vite would call it index.html).
 const renameHtml = (): Plugin => ({
-  name: 'kaiku-rename-html',
+  name: 'revi-rename-html',
   enforce: 'post',
   generateBundle(_, bundle) {
     const html = bundle['index.html'];
-    if (html) { html.fileName = 'kaiku-preview.html'; }
+    if (html) { html.fileName = 'revi-preview.html'; }
   }
 });
 
@@ -26,12 +26,12 @@ export default defineConfig(({ mode }) => {
     plugins: [
       react(),
       ...(standalone ? [viteSingleFile(), {
-        // The standalone build is one file people open by double-click: dist/kaiku-preview.html.
-        name: 'kaiku-standalone-name',
+        // The standalone build is one file people open by double-click: dist/revi-preview.html.
+        name: 'revi-standalone-name',
         enforce: 'post' as const,
         generateBundle(_: unknown, bundle: Record<string, { fileName: string }>) {
           const html = bundle['index.html'];
-          if (html) { html.fileName = 'kaiku-preview.html'; }
+          if (html) { html.fileName = 'revi-preview.html'; }
         }
       }] : [])
     ],
@@ -43,7 +43,7 @@ export default defineConfig(({ mode }) => {
     build: {
       outDir: here('./dist'),
       emptyOutDir: false,
-      rollupOptions: { output: { entryFileNames: 'kaiku-preview.js' } }
+      rollupOptions: { output: { entryFileNames: 'revi-preview.js' } }
     }
   };
 });

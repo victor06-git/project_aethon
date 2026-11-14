@@ -1,4 +1,4 @@
-// Loans, mortgage, bank-only Invest, Saver. (In Kaiku mode the Invest tab is views/kaiku/InvestScreen.)
+// Loans, mortgage, bank-only Invest, Saver. (In Revi mode the Invest tab is views/revi/InvestScreen.)
 import { useData } from '../../../models/hooks';
 import { isError } from '../../../models/phoneModel';
 import { money, shortDate } from '../../format';

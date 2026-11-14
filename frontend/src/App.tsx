@@ -1,15 +1,15 @@
-// Preview page: three modes (bank as is, bank + Kaiku, side by side). Each phone is its own
+// Preview page: three modes (bank as is, bank + Revi, side by side). Each phone is its own
 // controller with its own model. The devices keep Xiaomi 14 proportions and scale to the window.
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { PhoneController } from './controllers/PhoneController';
 
-type Mode = 'bank' | 'kaiku' | 'both';
+type Mode = 'bank' | 'revi' | 'both';
 const MODES: { id: Mode; label: string }[] = [
-  { id: 'bank', label: 'Bank only' }, { id: 'kaiku', label: 'Bank + Kaiku' }, { id: 'both', label: 'Side by side' }
+  { id: 'bank', label: 'Bank only' }, { id: 'revi', label: 'Bank + Revi' }, { id: 'both', label: 'Side by side' }
 ];
 
 function savedMode(): Mode {
-  try { return (localStorage.getItem('kaiku-mode') as Mode) || 'kaiku'; } catch { return 'kaiku'; }
+  try { return (localStorage.getItem('revi-mode') as Mode) || 'revi'; } catch { return 'revi'; }
 }
 
 export function App() {
@@ -17,10 +17,10 @@ export function App() {
   const stage = useRef<HTMLElement>(null);
   const [zoom, setZoom] = useState(1);
   const panes = mode === 'both'
-    ? [{ kaiku: false, caption: 'Bank as is' }, { kaiku: true, caption: 'Bank + Kaiku' }]
-    : [{ kaiku: mode === 'kaiku', caption: null }];
+    ? [{ revi: false, caption: 'Bank as is' }, { revi: true, caption: 'Bank + Revi' }]
+    : [{ revi: mode === 'revi', caption: null }];
 
-  useEffect(() => { try { localStorage.setItem('kaiku-mode', mode); } catch { /* storage may be blocked */ } }, [mode]);
+  useEffect(() => { try { localStorage.setItem('revi-mode', mode); } catch { /* storage may be blocked */ } }, [mode]);
 
   useLayoutEffect(() => {
     const fit = () => {
@@ -39,16 +39,16 @@ export function App() {
   return (
     <>
       <header className="topbar">
-        <strong>Kaiku · S-mobiili preview</strong>
+        <strong>Revi · S-mobiili preview</strong>
         <nav className="modes">
           {MODES.map((m) => <button key={m.id} type="button" data-mode={m.id} aria-pressed={mode === m.id} onClick={() => setMode(m.id)}>{m.label}</button>)}
         </nav>
       </header>
       <main className="stage" ref={stage}>
         {panes.map((p) => (
-          <div key={`${mode}-${p.kaiku}`} className="pair" style={{ zoom }}>
+          <div key={`${mode}-${p.revi}`} className="pair" style={{ zoom }}>
             {p.caption && <div className="caption">{p.caption}</div>}
-            <PhoneController kaiku={p.kaiku} label={p.caption ?? (p.kaiku ? 'Bank + Kaiku' : 'Bank')} />
+            <PhoneController revi={p.revi} label={p.caption ?? (p.revi ? 'Bank + Revi' : 'Bank')} />
           </div>
         ))}
       </main>

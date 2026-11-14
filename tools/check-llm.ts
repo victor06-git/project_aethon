@@ -5,7 +5,7 @@ import { createLlm } from '../backend/src/infrastructure/llm';
 
 const llm = createLlm(config);
 if (!llm) {
-  console.log('Model is off (no GEMINI_API_KEY in .env, or KAIKU_LLM_PROVIDER=none). The app uses the rules.');
+  console.log('Model is off (no GEMINI_API_KEY in .env, or REVI_LLM_PROVIDER=none). The app uses the rules.');
 } else {
   const q = process.argv.slice(2).join(' ') || 'What happens if I stop ordering food delivery?';
   console.log(`Provider: ${config.provider}${config.provider === 'gemini' ? `, model ${config.gemini.model}` : ''}`);

@@ -2,7 +2,7 @@
 import { createContext, useContext } from 'react';
 
 export interface Nav {
-  kaiku: boolean;
+  revi: boolean;
   go(name: string, arg?: string | null): void;
   back(): void;
   setTab(id: string, arg?: string | null): void;

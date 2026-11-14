@@ -4,7 +4,7 @@ import { Icon } from '../icons';
 
 interface Tab { id: string; label: string; icon: string; raised?: boolean }
 
-// Bank as is: Home is the first tab. With Kaiku: Invest (with the live 3D City) takes that
+// Bank as is: Home is the first tab. With Revi: Invest (with the live 3D City) takes that
 // place, and Home is reached through "S-mobiili" or the house icon in the header.
 const TABS_BANK: Tab[] = [
   { id: 'home', label: 'Home', icon: 'home' },
@@ -26,7 +26,7 @@ export const StatusBar = () => (
   <div className="status-bar"><span>9:41</span><span className="sb-icons"><i /><i /><i /><b /></span></div>
 );
 
-// Permanent header. The house icon belongs to Kaiku mode only (Home left the tab bar there);
+// Permanent header. The house icon belongs to Revi mode only (Home left the tab bar there);
 // the existing app has none. "S-mobiili" always leads to the banking home screen.
 export function Header({ subTitle }: { subTitle: string | null }) {
   const nav = useNav();
@@ -35,7 +35,7 @@ export function Header({ subTitle }: { subTitle: string | null }) {
       <header className="appbar">
         <button type="button" className="brandlink" onClick={nav.home} title="Back to the banking home screen">
           <span className="brand">S-mobiili</span>
-          {nav.kaiku && <span className="brand-home"><Icon name="home" size={22} /></span>}
+          {nav.revi && <span className="brand-home"><Icon name="home" size={22} /></span>}
         </button>
         <div className="header-actions">
           <button type="button" className="hicon" title="Messages" onClick={() => nav.go('messages')}><Icon name="message" size={22} /></button>
@@ -56,7 +56,7 @@ export function TabBar({ active }: { active: string | null }) {
   const nav = useNav();
   return (
     <nav className="tabbar">
-      {(nav.kaiku ? TABS : TABS_BANK).map((t) => (
+      {(nav.revi ? TABS : TABS_BANK).map((t) => (
         <button key={t.id} type="button" className={`${active === t.id ? 'on' : ''}${t.raised ? ' raised' : ''}`} onClick={() => nav.setTab(t.id)}>
           {t.raised ? <span className="raise"><Icon name={t.icon} size={22} /></span> : <Icon name={t.icon} size={23} />}
           <span>{t.label}</span>

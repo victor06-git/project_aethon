@@ -39,7 +39,7 @@ export function createRouter({ bank, coach }: { bank: BankService; coach: CoachS
     compile('POST', '/api/payments', (p, q, body) => bank.createPayment(body)),
     compile('POST', '/api/transfers', () => bank.createTransfer()),
     compile('POST', '/api/letters/send', () => ({ status: 'not_sent', note: 'Demo only: nothing was sent. You decide when to send.' })),
-    // Coach (Kaiku)
+    // Coach (Revi)
     compile('GET', '/api/coach/suggestions', () => coach.suggestions()),
     compile('GET', '/api/coach/expenses', () => coach.expenses()),
     compile('GET', '/api/coach/scenarios', () => coach.listScenarios()),

@@ -3,7 +3,7 @@
 JSON over HTTP. The same router runs in the Node server and inside the standalone file.
 Errors: `{ "message": string }` with status 400/404/500.
 
-## Coach (Kaiku)
+## Coach (Revi)
 
 ### `POST /api/coach/messages`
 Request: `{ "question": string }` (1–500 characters).

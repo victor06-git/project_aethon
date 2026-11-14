@@ -6,35 +6,35 @@ import { ModelContext } from '../models/hooks';
 import { NavContext, type Nav } from './nav';
 import { screensFor } from '../views/screens';
 import { StatusBar, Header, TabBar, Modal } from '../views/layout/Layout';
-import { Assistant } from '../views/kaiku/Assistant';
+import { Assistant } from '../views/revi/Assistant';
 import { Failed } from '../views/components';
 
 interface Step { name: string; arg: string | null }
 type Intro = 'pending' | 'shown' | 'done';
 
-export function PhoneController({ kaiku, label }: { kaiku: boolean; label: string }) {
+export function PhoneController({ revi, label }: { revi: boolean; label: string }) {
   const model = useMemo(() => new PhoneModel(), []);
-  const screens = useMemo(() => screensFor(kaiku), [kaiku]);
+  const screens = useMemo(() => screensFor(revi), [revi]);
   const [tab, setTabState] = useState<{ id: string; arg: string | null }>({ id: 'home', arg: null });
   const [stack, setStack] = useState<Step[]>([]);
   const [modal, setModal] = useState<{ title: string; body: string } | null>(null);
   const [assistant, setAssistant] = useState<'closed' | 'open'>('closed');
-  const [intro, setIntro] = useState<Intro>(kaiku ? 'pending' : 'done');
+  const [intro, setIntro] = useState<Intro>(revi ? 'pending' : 'done');
   const screenRef = useRef<HTMLElement>(null);
 
   // Intro bubble next to the launcher: in after 0.7 s, out after ~5 s, once per visit.
   useEffect(() => {
-    if (!kaiku) return;
+    if (!revi) return;
     const a = setTimeout(() => setIntro((s) => (s === 'pending' ? 'shown' : s)), 700);
     const b = setTimeout(() => setIntro('done'), 5200);
     return () => { clearTimeout(a); clearTimeout(b); };
-  }, [kaiku]);
+  }, [revi]);
 
   const top: Step = stack.length ? stack[stack.length - 1] : { name: tab.id, arg: tab.arg };
   const scrollTop = useCallback(() => { if (screenRef.current) screenRef.current.scrollTop = 0; }, []);
 
   const nav: Nav = useMemo(() => ({
-    kaiku,
+    revi,
     go: (name, arg = null) => { setStack((s) => [...s, { name, arg }]); scrollTop(); },
     back: () => { setStack((s) => s.slice(0, -1)); scrollTop(); },
     setTab: (id, arg = null) => { setTabState({ id, arg }); setStack([]); scrollTop(); },
@@ -47,10 +47,10 @@ export function PhoneController({ kaiku, label }: { kaiku: boolean; label: strin
     home: () => { setAssistant('closed'); setTabState({ id: 'home', arg: null }); setStack([]); scrollTop(); },
     openCity: (id = 'stop_food') => { setAssistant('closed'); setTabState({ id: 'invest', arg: id }); setStack([]); scrollTop(); },
     showModal: (title, body) => setModal({ title, body }),
-    openAssistant: () => { if (kaiku) { setIntro('done'); setAssistant('open'); } },
+    openAssistant: () => { if (revi) { setIntro('done'); setAssistant('open'); } },
     closeAssistant: () => setAssistant('closed'),
     ask: (q) => { setIntro('done'); setAssistant('open'); model.ask(q); }
-  }), [kaiku, model, scrollTop]);
+  }), [revi, model, scrollTop]);
 
   const screen = screens[top.name];
   const Screen = screen?.Component;
@@ -66,7 +66,7 @@ export function PhoneController({ kaiku, label }: { kaiku: boolean; label: strin
             {Screen ? <Screen key={`${top.name}`} arg={top.arg} /> : <Failed message="Unknown screen" />}
           </main>
           <TabBar active={stack.length ? null : tab.id} />
-          {kaiku && <Assistant open={assistant === 'open'} intro={intro} />}
+          {revi && <Assistant open={assistant === 'open'} intro={intro} />}
           {modal && <Modal title={modal.title} body={modal.body} onClose={() => setModal(null)} />}
         </section>
       </NavContext.Provider>

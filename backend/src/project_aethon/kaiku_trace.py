@@ -61,7 +61,7 @@ def trace(res: Result) -> str:
     steps = {s["step"]: s for s in res.steps}
     src = {s["n"]: s for s in res.sources}
     q = " ".join(res.question.split())
-    out = [f'KAIKU TRACE  "{q[:W - 18]}{"..." if len(q) > W - 18 else ""}"', "=" * W]
+    out = [f'REVI TRACE  "{q[:W - 18]}{"..." if len(q) > W - 18 else ""}"', "=" * W]
 
     # ---- 1 ROUTE ----
     r = steps.get("route", {})
@@ -203,7 +203,7 @@ def timeline(results: dict) -> pd.DataFrame:
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(description="Ask Kaiku one question and print the trace.")
+    p = argparse.ArgumentParser(description="Ask Revi one question and print the trace.")
     p.add_argument("question", nargs="+")
     p.add_argument("--thoughts", action="store_true", help="ask the model for its reasoning summary")
     p.add_argument("--thinking", default=None, help="thinking level of the answer step (minimal, low, ...)")

@@ -1,7 +1,7 @@
-# Project Aethon · Kaiku Finance
+# Project Aethon · Revi Finance
 
-Kaiku · S-mobiili preview: a clickable S-mobiili banking app with the Kaiku coach built in.
-Three modes: bank only, bank + Kaiku, side by side. Unofficial hackathon prototype
+Revi · S-mobiili preview: a clickable S-mobiili banking app with the Revi coach built in.
+Three modes: bank only, bank + Revi, side by side. Unofficial hackathon prototype
 (Junction 2026, S-Pankki challenge); not the bank's software.
 
 Stack: React + TypeScript (Vite) frontend, TypeScript backend on Node 22, Python for the model side.
@@ -11,7 +11,7 @@ Stack: React + TypeScript (Vite) frontend, TypeScript backend on Node 22, Python
 ```bash
 npm install            # once
 npm start              # app + API with live reload → http://localhost:3000
-npm run build          # dist/kaiku-preview.html: one file, opens by double-click (demo data)
+npm run build          # dist/revi-preview.html: one file, opens by double-click (demo data)
 npm test               # contract tests
 npm run typecheck      # TypeScript check
 npm run check:llm      # test the Gemini key

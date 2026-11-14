@@ -222,7 +222,7 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-# --- Kaiku (Node.js) ---
+# --- Revi (Node.js) ---
 node_modules/
 # S-Pankki dataset and its cache: large, licensed, never committed
 data/

@@ -34,19 +34,19 @@ project_aethon/
 │     ├─ views/                  V: React components, no state of their own beyond UI details
 │     │  ├─ layout/Layout.tsx    status bar, permanent header, tab bars, modal
 │     │  ├─ screens/bank/*.tsx   S-mobiili screens; screens/index.ts registry
-│     │  ├─ kaiku/               CityView, city3d.ts (3D renderer), KaikuCard, Assistant, KaikuScreens
+│     │  ├─ revi/               CityView, city3d.ts (3D renderer), ReviCard, Assistant, ReviScreens
 │     │  └─ components.tsx, icons.tsx, format.ts
 │     ├─ controllers/            C: PhoneController.tsx (navigation, assistant), nav.ts (what views may ask for)
-│     ├─ App.tsx                 modes: bank / bank + Kaiku / side by side
+│     ├─ App.tsx                 modes: bank / bank + Revi / side by side
 │     └─ main.tsx
-├─ src/project_aethon/           Python package (kaiku_agent.py, kaiku_eval.py, __init__.py)   ← model teammate
-├─ notebook/                     Jupyter notebooks (kaiku_test.ipynb)                          ← model teammate
+├─ src/project_aethon/           Python package (revi_agent.py, revi_eval.py, __init__.py)   ← model teammate
+├─ notebook/                     Jupyter notebooks (revi_test.ipynb)                          ← model teammate
 ├─ tests/                        contract tests (npm test)
 ├─ tools/check-llm.ts            tests the model key
 ├─ docs/                         ARCHITECTURE.md, API.md
 ├─ data/                         S-Pankki CSVs (git-ignored)
 ├─ vite.config.ts, tsconfig.json, package.json
-└─ dist/kaiku-preview.html       standalone build (git-ignored)
+└─ dist/revi-preview.html       standalone build (git-ignored)
 ```
 
 ## Dependency rule
@@ -63,11 +63,11 @@ The standalone build runs the same backend container inside the browser (`models
 | Model, prompts, chat agent, evaluation (Python) | Model teammate | `src/project_aethon/`, `notebook/`, `backend/src/infrastructure/llm/` | `QuestionClassifier` port, `POST /api/coach/messages` answer shape |
 | Echo engine (forecasts, learning) | Model teammate | `backend/src/infrastructure/engine/` | `ForecastEngine` port |
 | Data ingestion | Data / model teammate | `backend/src/infrastructure/repositories/` | `TransactionRepository` port |
-| Banking UI, Kaiku UI, 3D City | UI | `frontend/` | API contract |
+| Banking UI, Revi UI, 3D City | UI | `frontend/` | API contract |
 | Use cases, API routes | shared, change together | `backend/src/application/`, `backend/src/interfaces/http/` | API contract |
 
-Python code reaches the app over HTTP: run it as a service and point `KAIKU_LLM_URL` at it
-(`KAIKU_LLM_PROVIDER=openai`), or replace an adapter in `backend/src/infrastructure/`.
+Python code reaches the app over HTTP: run it as a service and point `REVI_LLM_URL` at it
+(`REVI_LLM_PROVIDER=openai`), or replace an adapter in `backend/src/infrastructure/`.
 
 Adding a question type: add it to `domain/intents.ts` (the prompt picks it up), add a keyword rule,
 then answer it in `application/coachService.ts` (fact/action) or add a scenario to the engine (forecast).
@@ -75,8 +75,8 @@ then answer it in `application/coachService.ts` (fact/action) or add a scenario 
 
 ## Data
 
-- `KAIKU_DATA_SOURCE=auto` (default): uses `data/tx_junction_transactions.csv` if it exists, otherwise fixtures.
-- One customer is loaded (`KAIKU_CUSTOMER_ID`, default `CUST00001`) by streaming the 360 MB file once;
+- `REVI_DATA_SOURCE=auto` (default): uses `data/tx_junction_transactions.csv` if it exists, otherwise fixtures.
+- One customer is loaded (`REVI_CUSTOMER_ID`, default `CUST00001`) by streaming the 360 MB file once;
   the rows are cached in `data/.cache/<id>.json` for instant restarts.
 - "Today" for the coach is the last transaction date in the data, 2026-09-30 for the dataset.
 - Still demo data: cards, loans, bonus, offers, upcoming and recurring payments, scenarios, safe-to-spend.
@@ -84,6 +84,6 @@ then answer it in `application/coachService.ts` (fact/action) or add a scenario 
 
 ## Model
 
-- `GEMINI_API_KEY` in `.env` (git-ignored). `KAIKU_LLM_PROVIDER=auto` uses Gemini only when a key exists.
-- `KAIKU_LLM_PROVIDER=none` switches the model off without removing the key.
+- `GEMINI_API_KEY` in `.env` (git-ignored). `REVI_LLM_PROVIDER=auto` uses Gemini only when a key exists.
+- `REVI_LLM_PROVIDER=none` switches the model off without removing the key.
 - The model only classifies. Any failure falls back to the rules and is logged; the app keeps working.
