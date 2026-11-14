@@ -167,9 +167,14 @@ export class PhoneModel {
     if (this.busy) return;
     this.chat = [...this.chat, { role: 'user', text: said }, { role: 'bot', pending: true, steps: [] }];
     this.emit();
+    // Every reply takes at least 2-3 s on screen, so the steps are visible while Revi works
+    // (fast local answers otherwise appear instantly and feel pre-recorded).
+    const minMs = 2000 + Math.random() * 1000;
+    const started = Date.now();
     let reply: ChatMessage;
     try {
       const { answer, state } = await send((step) => this.showStep(step));
+      await new Promise((r) => setTimeout(r, Math.max(0, minMs - (Date.now() - started))));
       this.setTrainer(state);
       reply = { role: 'bot', answer };
     } catch (err) {
