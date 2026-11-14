@@ -106,8 +106,32 @@ void main(){
   float star = step(0.986, s) * smoothstep(0.12, 0.0, length(f)) * tw * smoothstep(-0.1, 0.5, p.y);
   vec3 col = sky + vec3(0.8, 1.0, 0.95) * star * 0.8;
   // two curtains: a faint one far behind, the main one in front
-  col += curtain(p, 0.05, 0.14, 0.8, 4.0, 0.38);
-  col += curtain(p, -0.28, 0.20, 1.0, 1.3, 0.78);
+  vec3 aur = curtain(p, 0.05, 0.14, 0.8, 4.0, 0.38) + curtain(p, -0.28, 0.20, 1.0, 1.3, 0.78);
+  float aa0 = 2.0 / res.x;
+  float disc0 = smoothstep(1.0, 1.0 - aa0, r);
+  // flat UI palettes: no scene, only the aurora ribbon on the app's own surfaces
+  if (brand > 2.5) {
+    float L = 1.0 - exp(-dot(aur, vec3(0.3, 0.6, 0.1)) * 1.5);
+    L *= smoothstep(1.0, 0.75, r);
+    vec3 c;
+    if (brand < 3.5) {        // clean: bank green button, white-mint light
+      vec3 bg = mix(vec3(0.043, 0.72, 0.353), vec3(0.027, 0.52, 0.25), smoothstep(-1.0, 1.0, p.x - p.y));
+      c = mix(bg, vec3(0.88, 1.0, 0.93), L);
+    } else if (brand < 4.5) { // ink: the teaser's deep green (--deep #087339), mint light
+      vec3 bg = mix(vec3(0.045, 0.52, 0.26), vec3(0.025, 0.40, 0.2), smoothstep(-1.0, 1.0, p.x - p.y));
+      c = mix(bg, vec3(0.62, 1.0, 0.78), L);
+    } else {                  // light: white card surface, bank green light with visible rays
+      vec3 bg = mix(vec3(0.99, 1.0, 0.99), vec3(0.89, 0.965, 0.92), smoothstep(0.9, -0.9, p.y));
+      float Ld = 1.0 - exp(-dot(aur, vec3(0.3, 0.6, 0.1)) * 3.0);
+      Ld = pow(Ld, 0.72) * smoothstep(1.0, 0.8, r) * 0.92;     // lift the faint rays above the bright edge
+      // only the bank's greens: soft mint in the faint rays, the teaser's deep green (#087339) in the folds
+      vec3 ink = mix(vec3(0.36, 0.80, 0.55), vec3(0.031, 0.45, 0.224), smoothstep(0.2, 0.95, Ld));
+      c = mix(bg, ink, Ld);
+    }
+    gl_FragColor = vec4(c * disc0, disc0);
+    return;
+  }
+  col += aur;
   // fade the light toward the rim so it sits inside the button
   col = mix(sky, col, smoothstep(1.02, 0.80, r));
   // Lapland landscape: a hazy far row of small spruces, snow lit faintly green by the aurora,
@@ -139,7 +163,9 @@ void main(){
   col += vec3(0.18, 0.85, 0.55) * rim * 0.35;
   // brand palette: re-map the night scene by brightness onto the S-Pankki greens, so the icon
   // reads as part of the bank UI (green card gradient, darker green forest, mint-white light)
-  if (brand > 0.5) {
+  // deep palette: the same real aurora, shifted from teal toward the bank's deep green
+  if (brand > 1.5) { col *= vec3(0.9, 1.0, 0.62); }
+  else if (brand > 0.5) {
     float lum = dot(col, vec3(0.3, 0.6, 0.1));
     vec3 skyB = mix(vec3(0.05, 0.70, 0.34), vec3(0.02, 0.50, 0.24), smoothstep(-0.9, 0.9, p.x - p.y));
     vec3 b = mix(vec3(0.015, 0.40, 0.20), skyB, smoothstep(0.1, 0.165, lum));
@@ -150,7 +176,7 @@ void main(){
   gl_FragColor = vec4(col * disc, disc);
 }`;
 
-export type AuroraPalette = 'night' | 'brand';
+export type AuroraPalette = 'night' | 'deep' | 'brand' | 'clean' | 'ink' | 'light';
 
 export function mountAurora(canvas: HTMLCanvasElement, { palette = 'night' }: { palette?: AuroraPalette } = {}): () => void {
   const gl = canvas.getContext('webgl', { premultipliedAlpha: true, antialias: true, alpha: true });
@@ -169,7 +195,7 @@ export function mountAurora(canvas: HTMLCanvasElement, { palette = 'night' }: { 
   gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
   const uT = gl.getUniformLocation(prog, 't');
   const uRes = gl.getUniformLocation(prog, 'res');
-  gl.uniform1f(gl.getUniformLocation(prog, 'brand'), palette === 'brand' ? 1 : 0);
+  gl.uniform1f(gl.getUniformLocation(prog, 'brand'), ({ night: 0, brand: 1, deep: 2, clean: 3, ink: 4, light: 5 } as const)[palette]);
   let raf = 0;
   const t0 = performance.now() - 20000 * Math.random();
   const frame = () => {
@@ -193,7 +219,8 @@ export function mountAurora(canvas: HTMLCanvasElement, { palette = 'night' }: { 
 export type WaveVariant = 'one' | 'two';
 interface WaveLayer { k: number[]; a: number[]; s: number[]; reach: number; fill: number; line: number }
 
-export function mountWaves(canvas: HTMLCanvasElement, { variant = 'two' }: { variant?: WaveVariant } = {}): () => void {
+export function mountWaves(canvas: HTMLCanvasElement, { variant = 'two', tone = 'glow' }: { variant?: WaveVariant; tone?: 'glow' | 'light' } = {}): () => void {
+  const onLight = tone === 'light';
   const ctx = canvas.getContext('2d');
   if (!ctx) return () => {};
   const ONE: WaveLayer[] = [
@@ -231,21 +258,23 @@ export function mountWaves(canvas: HTMLCanvasElement, { variant = 'two' }: { var
       const ring = new Path2D(wave);
       ring.arc(cx, cy, R * 0.98, 0, Math.PI * 2, true);
       const g = ctx.createRadialGradient(cx, cy, R * 0.98, cx, cy, R * (1 + L.reach + 0.12));
-      g.addColorStop(0, `rgba(29, 227, 165, ${L.fill})`);
-      g.addColorStop(0.55, `rgba(0, 170, 79, ${L.fill * 0.55})`);
+      g.addColorStop(0, onLight ? `rgba(0, 170, 79, ${L.fill * 1.5})` : `rgba(29, 227, 165, ${L.fill})`);
+      g.addColorStop(0.55, onLight ? `rgba(8, 115, 57, ${L.fill * 0.6})` : `rgba(0, 170, 79, ${L.fill * 0.55})`);
       g.addColorStop(1, 'rgba(0, 170, 79, 0)');
       ctx.fillStyle = g;
       ctx.fill(ring, 'evenodd');
       // a soft edge line that drifts in colour around the circle
       const c = typeof ctx.createConicGradient === 'function' ? ctx.createConicGradient(t * 0.25 * (li ? -1 : 1), cx, cy) : null;
       if (c) {
-        c.addColorStop(0, 'rgba(93, 255, 174, .9)'); c.addColorStop(0.33, 'rgba(0, 170, 79, .5)');
-        c.addColorStop(0.66, 'rgba(122, 255, 196, .85)'); c.addColorStop(1, 'rgba(93, 255, 174, .9)');
+        const stops: [number, string][] = onLight
+          ? [[0, 'rgba(8, 115, 57, .9)'], [0.33, 'rgba(11, 184, 90, .45)'], [0.66, 'rgba(8, 115, 57, .8)'], [1, 'rgba(8, 115, 57, .9)']]
+          : [[0, 'rgba(93, 255, 174, .9)'], [0.33, 'rgba(0, 170, 79, .5)'], [0.66, 'rgba(122, 255, 196, .85)'], [1, 'rgba(93, 255, 174, .9)']];
+        stops.forEach(([o, col]) => c.addColorStop(o, col));
       }
       ctx.strokeStyle = c ?? 'rgba(93, 255, 174, .7)';
-      ctx.globalAlpha = L.line;
+      ctx.globalAlpha = onLight ? Math.min(1, L.line * 1.5) : L.line;
       ctx.lineWidth = Math.max(1, R * 0.03);
-      ctx.shadowColor = 'rgba(45, 255, 168, .6)';
+      ctx.shadowColor = onLight ? 'rgba(8, 115, 57, .3)' : 'rgba(45, 255, 168, .6)';
       ctx.shadowBlur = R * 0.12;
       ctx.stroke(wave);
       ctx.globalAlpha = 1;

@@ -4,7 +4,7 @@ import { mountAurora, mountWaves, type AuroraPalette, type WaveVariant } from '.
 // Kaiku's mark: a round window onto the northern lights, wrapped in two living waves.
 // 'brand' palette paints the scene in the bank's own greens; 'night' keeps the dark sky.
 // Falls back to a plain gradient when WebGL is unavailable or the user prefers reduced motion.
-export function AuroraOrb({ waves = 'two', palette = 'brand', className = '' }: { waves?: WaveVariant | 'none'; palette?: AuroraPalette; className?: string }) {
+export function AuroraOrb({ waves = 'two', palette = 'ink', className = '' }: { waves?: WaveVariant | 'none'; palette?: AuroraPalette; className?: string }) {
   const sky = useRef<HTMLCanvasElement>(null);
   const ring = useRef<HTMLCanvasElement>(null);
 
