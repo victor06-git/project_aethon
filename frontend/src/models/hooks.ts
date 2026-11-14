@@ -1,4 +1,4 @@
-// React bindings for the model: one PhoneModel per phone, provided by the controller.
+// React bindings for the model: one PhoneModel per phone, provided by the controller
 import { createContext, useContext, useSyncExternalStore } from 'react';
 import type { Loaded, PhoneModel } from './phoneModel';
 
