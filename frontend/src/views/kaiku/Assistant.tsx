@@ -1,6 +1,7 @@
 // Kaiku assistant: round launcher with the echo mark, an intro bubble that appears for a few
 // seconds after the app opens, and the compact chat: the input slides out of the launcher,
 // "Welcome to Kaiku!" and the questions flow above it as wrapping text, answers stack up there.
+// After the second question the chat fills the screen with white and gets a back arrow.
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import type { Answer } from '../../../../backend/src/domain/types';
 import { useModel } from '../../models/hooks';
@@ -76,6 +77,8 @@ export function Assistant({ open, intro }: { open: boolean; intro: 'pending' | '
   const teaser = usePresence(intro === 'shown', 400);
   const chat = model.chat;
   const suggestions = model.suggestions() ?? DEFAULT_SUGGESTIONS;
+  // From the second question on, the compact chat becomes a full white chat screen with a back arrow.
+  const full = open && chat.filter((m) => m.role === 'user').length >= 2;
 
   useEffect(() => { if (panel.current) panel.current.scrollTop = panel.current.scrollHeight; }, [chat, layer.shown]);
   useEffect(() => { if (open) { const t = setTimeout(() => input.current?.focus({ preventScroll: true }), 330); return () => clearTimeout(t); } }, [open]);
@@ -90,7 +93,7 @@ export function Assistant({ open, intro }: { open: boolean; intro: 'pending' | '
 
   return (
     <>
-      <button type="button" className={`k-launcher${open ? ' open' : ''}`} onClick={open ? nav.closeAssistant : nav.openAssistant}
+      <button type="button" className={`k-launcher${open ? ' open' : ''}${full ? ' hidden' : ''}`} onClick={open ? nav.closeAssistant : nav.openAssistant}
         aria-label={`${open ? 'Close' : 'Open'} Kaiku assistant`} title="Kaiku: ask what happens next">
         <span className="k-ico k-ico-mark"><AuroraOrb /></span>
         <span className="k-ico k-ico-close"><Icon name="close" size={22} /></span>
@@ -104,7 +107,14 @@ export function Assistant({ open, intro }: { open: boolean; intro: 'pending' | '
       )}
 
       {layer.mounted && (
-        <div className={`k-layer${layer.shown ? ' open' : ''}`}>
+        <div className={`k-layer${layer.shown ? ' open' : ''}${full ? ' full' : ''}`}>
+          {full && (
+            <header className="k-head">
+              <button type="button" className="k-back" onClick={nav.closeAssistant} aria-label="Back"><Icon name="back" size={22} /></button>
+              <span className="k-head-orb"><AuroraOrb waves="none" /></span>
+              <b>Kaiku</b>
+            </header>
+          )}
           <div ref={panel} className={`k-stack${chat.length ? ' started' : ''}`} role="dialog" aria-label="Kaiku assistant">
             {chat.length ? (
               <div className="k-msgs">{chat.map((m, i) => (

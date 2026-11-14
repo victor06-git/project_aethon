@@ -146,15 +146,16 @@ h1, h2, h3 { margin: 0; }
 
 /* 10. Assistant: round launcher, intro bubble, input sliding out of the launcher,
        "Welcome!" with compact questions, then the conversation above the input */
-.k-launcher { --k-ink: #0a9f4f; position: absolute; right: 16px; bottom: 80px; z-index: 30; width: 56px; height: 56px; display: grid; place-items: center; color: #fff; background: linear-gradient(145deg, #0bb85a, #078540); border: 0; border-radius: 50%; box-shadow: 0 8px 22px #0b6b3555, 0 0 0 4px #ffffffd9; transition: transform .18s ease; }
+.k-launcher { --k-ink: #0a9f4f; position: absolute; right: 16px; bottom: 80px; z-index: 30; width: 56px; height: 56px; display: grid; place-items: center; padding: 0; color: #fff; background: transparent; border: 0; border-radius: 50%; transition: transform .18s ease; }
 .k-launcher:hover { transform: translateY(-2px); }
-.k-launcher::after { content: ""; position: absolute; inset: -4px; border: 2px solid #00aa4f66; border-radius: 50%; animation: kring 2.4s ease-out infinite; }
-.k-launcher.open::after { display: none; }
 .k-launcher .k-ico { position: absolute; inset: 0; display: grid; place-items: center; transition: transform .25s ease, opacity .2s ease; }
-.k-launcher .k-ico-close { opacity: 0; transform: rotate(-90deg) scale(.6); }
+.k-launcher .k-ico-close { opacity: 0; transform: rotate(-90deg) scale(.6); border-radius: 50%; background: linear-gradient(145deg, #0bb85a, #078540); box-shadow: 0 8px 22px #0b6b3555, 0 0 0 4px #ffffffd9; }
 .k-launcher.open .k-ico-mark { opacity: 0; transform: rotate(90deg) scale(.6); }
 .k-launcher.open .k-ico-close { opacity: 1; transform: none; }
-@keyframes kring { 0% { transform: scale(.95); opacity: .9; } 100% { transform: scale(1.3); opacity: 0; } }
+/* Aurora orb: the sky canvas fills the button, the waves canvas overflows it (button = middle 64%) */
+.k-orb { position: relative; display: block; width: 100%; height: 100%; }
+.k-orb-sky { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 50%; background: #f4fbf6; box-shadow: 0 6px 18px #0b6b3526; }
+.k-orb-waves { position: absolute; left: -28.125%; top: -28.125%; width: 156.25%; height: 156.25%; pointer-events: none; }
 
 .k-teaser { position: absolute; right: 18px; bottom: 148px; z-index: 31; display: flex; flex-direction: column; gap: 4px; max-width: 270px; padding: 12px 14px; text-align: left; font-size: 13px; line-height: 1.45; color: #fff; background: var(--deep); border: 0; border-radius: 16px 16px 4px 16px; box-shadow: 0 10px 26px #0b3a2033; opacity: 0; pointer-events: none; transform: translateY(10px) scale(.92); transform-origin: bottom right; transition: opacity .35s ease, transform .35s cubic-bezier(.22, 1, .36, 1); }
 .k-teaser b { font-size: 14.5px; font-weight: 850; }
@@ -206,14 +207,28 @@ h1, h2, h3 { margin: 0; }
 .city-canvas { display: block; width: 100%; height: 100%; cursor: grab; }
 .city-canvas:active { cursor: grabbing; }
 .city-readout { position: absolute; right: 12px; bottom: 10px; padding: 4px 9px; font-size: 13px; font-weight: 850; color: var(--deep); background: rgba(255, 255, 255, .85); border: 1px solid #d5efda; border-radius: 8px; }
-.timeline { position: relative; height: 46px; overflow: hidden; background: #fff; border-bottom: 1px solid var(--line); cursor: ew-resize; touch-action: none; user-select: none; }
-.timeline:focus-visible { outline: 2px solid #76cfa0; outline-offset: -2px; }
-.tl-track { position: absolute; left: 50%; top: 0; bottom: 0; transition: transform .12s linear; }
-.tl-track i { position: absolute; bottom: 10px; width: 1px; height: 8px; background: #b7c9bc; }
-.tl-track i.m { height: 14px; background: #6f8f79; }
-.tl-track b { position: absolute; bottom: 26px; transform: translateX(-50%); font-size: 10px; font-weight: 700; color: #6f8f79; }
-.tl-track em { position: absolute; bottom: 8px; width: 9px; height: 9px; margin-left: -4px; background: #c98a2b; transform: rotate(45deg); }
-.tl-now { position: absolute; left: 50%; top: 4px; bottom: 4px; width: 2px; margin-left: -1px; background: var(--green); }
+.timeline { --past: 0px; position: relative; height: 60px; overflow: hidden; background: #fff; border-bottom: 1px solid var(--line); cursor: grab; touch-action: pan-y; user-select: none; }
+.timeline:active { cursor: grabbing; }
+.timeline:focus { outline: none; }
+.timeline:focus-visible { box-shadow: inset 0 0 0 2px #76cfa0; }
+/* soft fade at both ends so the ruler slides in and out instead of being cut */
+.timeline::before, .timeline::after { content: ""; position: absolute; top: 0; bottom: 0; z-index: 3; width: 44px; pointer-events: none; }
+.timeline::before { left: 0; background: linear-gradient(to right, #fff, #fff0); }
+.timeline::after { right: 0; background: linear-gradient(to left, #fff, #fff0); }
+/* the time already travelled, from today to the cursor */
+.tl-past { position: absolute; top: 0; bottom: 0; right: 50%; width: min(var(--past), 50%); background: linear-gradient(to right, #00aa4f00, #00aa4f14); border-bottom: 2px solid #00aa4f55; }
+.tl-track { position: absolute; left: 50%; top: 0; bottom: 0; will-change: transform; }
+.tl-days { position: absolute; left: 0; right: 0; bottom: 12px; height: 12px;
+  background:
+    repeating-linear-gradient(to right, #9fb5a6 0 1px, transparent 1px 42px) left bottom / 100% 12px no-repeat,
+    repeating-linear-gradient(to right, #d6e2da 0 1px, transparent 1px 6px) left bottom / 100% 6px no-repeat; }
+.tl-month, .tl-today { position: absolute; bottom: 12px; width: 1px; height: 22px; background: #5f8a6d; }
+.tl-month b, .tl-today b { position: absolute; left: 5px; bottom: 11px; font-size: 10px; font-weight: 750; letter-spacing: .02em; color: #4d7a5d; white-space: nowrap; }
+.tl-today { left: 0; background: var(--green); }
+.tl-today b { color: var(--deep); }
+.tl-track em { position: absolute; bottom: 30px; width: 8px; height: 8px; margin-left: -4px; background: #c98a2b; transform: rotate(45deg); }
+.tl-now { position: absolute; left: 50%; top: 0; bottom: 6px; z-index: 2; width: 2px; margin-left: -1px; background: var(--green); pointer-events: none; }
+.tl-now::before { content: ""; position: absolute; top: 0; left: -5px; border: 6px solid transparent; border-top: 7px solid var(--green); border-bottom: 0; }
 .city-caption { position: absolute; left: 12px; top: 10px; right: 90px; display: flex; flex-direction: column; gap: 2px; pointer-events: auto; }
 .city-caption b { font-size: 15px; font-weight: 850; line-height: 1.25; color: var(--deep); text-shadow: 0 0 6px #fff; }
 .city-caption span { font-size: 11.5px; font-weight: 600; color: #4b6052; }
@@ -233,3 +248,15 @@ h1, h2, h3 { margin: 0; }
 /* Soft fade behind the open assistant (no frame): keeps the questions readable over any screen. */
 .k-layer::before { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 330px; background: linear-gradient(to top, rgba(247, 250, 247, .97) 0, rgba(247, 250, 247, .92) 65%, rgba(247, 250, 247, 0) 100%); opacity: 0; transition: opacity .35s ease; pointer-events: none; }
 .k-layer.open::before { opacity: 1; }
+/* Full chat: from the second question the layer covers the whole screen in white */
+.k-layer { transition: inset .35s cubic-bezier(.16, 1, .3, 1); }
+.k-layer.full { inset: 30px 0 0 0; z-index: 32; }
+.k-layer.full::before { top: 0; height: auto; background: #fff; }
+.k-layer.full .k-stack { top: 64px; bottom: 84px; max-height: none; }
+.k-layer.full .k-input { right: 16px; bottom: 18px; width: calc(100% - 32px); }
+.k-head { position: absolute; top: 0; left: 0; right: 0; z-index: 1; display: flex; align-items: center; gap: 8px; height: 56px; padding: 0 12px 0 6px; background: #fff; border-bottom: 1px solid #e6efe8; animation: kin .25s ease; }
+.k-head b { font-size: 16px; font-weight: 850; color: var(--deep); }
+.k-back { width: 40px; height: 40px; display: grid; place-items: center; color: var(--deep); background: none; border: 0; border-radius: 50%; cursor: pointer; }
+.k-back:hover { background: #f1faf3; }
+.k-head-orb { width: 28px; height: 28px; }
+.k-launcher.hidden { opacity: 0; pointer-events: none; }
