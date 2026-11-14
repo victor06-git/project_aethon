@@ -61,6 +61,32 @@ export interface CityPoint {
 
 export interface Letter { subject: string; body: string }
 
+/** A web source behind one answer (Kaiku coach): numbered as cited, official-first. */
+export interface AnswerSource {
+  k: number;             // citation number as it appears in the text: [1], [2]...
+  official: boolean;     // from the official-domain list (Kela, Vero, Finlex, Bank of Finland...)
+  domain: string;
+  title: string;
+  url: string;
+  published?: string | null;
+  fragment?: string;     // the quoted piece of the page that backs the claim
+}
+
+/** How the answer was produced (shown under "Sources" for the curious and the judges). */
+export interface AnswerTrace {
+  route: string;         // static | web | data | both | clarify, "(document)" for letters
+  decidedBy: string;     // model | guardrail (...) | fallback (...)
+  llmCalls: number;
+  tokens: number;
+  thinkingTokens?: number;
+  seconds: number;
+  exaCost?: number;
+  cached?: boolean;
+  query?: string | null;
+  thinkingLevel?: string | null;
+  problems?: string[];   // automatic checks that failed (empty = all good)
+}
+
 // The coach answer contract (docs/API.md).
 export interface Answer {
   type: Intent;
@@ -73,6 +99,11 @@ export interface Answer {
   letter?: Letter;
   examples?: string[];
   source?: 'model' | 'rules';
+  // Optional extras from the Kaiku coach service (see src/project_aethon/kaiku_service.py).
+  sources?: AnswerSource[];
+  dataUsed?: { period: string; transactions: number; note?: string };
+  trace?: AnswerTrace;
+  noEvidence?: boolean;
 }
 
 export interface SafeToSpend { amount: number; until: string }

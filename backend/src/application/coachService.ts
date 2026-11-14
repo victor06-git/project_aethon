@@ -14,10 +14,13 @@ interface Deps {
   transactions: TransactionRepository;
   rules: QuestionClassifier;
   model?: QuestionClassifier | null;
+  /** The full Kaiku coach (Python service): letters and every question the local intents
+   *  cannot answer. On any failure the local answer below is used instead. */
+  kaiku?: { ask(question: string): Promise<Answer> } | null;
   log?: (msg: string) => void;
 }
 
-export function createCoachService({ engine, transactions, rules, model = null, log = () => {} }: Deps) {
+export function createCoachService({ engine, transactions, rules, model = null, kaiku = null, log = () => {} }: Deps) {
   // Every forecast id the coach can route to must exist in the engine.
   const scenarioIds = new Set(engine.listScenarios().map((s) => s.id));
   const missing = Object.keys(INTENTS.forecast).filter((id) => !scenarioIds.has(id));
@@ -79,6 +82,15 @@ export function createCoachService({ engine, transactions, rules, model = null, 
       if (!q) throw httpError(400, 'Empty question');
       if (q.length > 500) throw httpError(400, 'Question is too long');
       const { route: r, source } = await route(q);
+      // Scenario and fact intents stay local (the City demo and safe-to-spend). Letters and
+      // anything unsupported go to the Kaiku service, which answers with live web evidence.
+      if (kaiku && (r.intent === 'clarify' || r.intent === 'action' || !isSupported(r.intent, r.id))) {
+        try {
+          return { source: 'model', ...(await kaiku.ask(q)) };
+        } catch (err) {
+          log(`kaiku failed, answering locally: ${(err as Error).message}`);
+        }
+      }
       return { ...answer(r), source };
     },
     suggestions: () => engine.suggestions(),

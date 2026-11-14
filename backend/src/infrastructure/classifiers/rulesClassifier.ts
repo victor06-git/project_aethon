@@ -11,7 +11,7 @@ export function classifyByRules(question: string): Route {
   if (has('safely spend', 'safe to spend', 'how much can i spend')) return { intent: 'fact', id: 'safe_to_spend' };
   if (has('rent') && has('increase', 'went up', 'raised', 'legal', 'letter', 'higher')) return { intent: 'action', id: 'rent_increase' };
   if (has('taxi')) return { intent: 'fact', id: 'taxi_total' };
-  if (has('where') && has('money')) return { intent: 'fact', id: 'breakdown' };
+  if (has('where') && has('money') && !has('basket')) return { intent: 'fact', id: 'breakdown' };
   if (has('food delivery', 'wolt', 'foodora', 'delivery') && has('stop', 'cut', 'less', 'reduce', 'no longer')) return { intent: 'forecast', id: 'stop_food' };
   if (has('mortgage', 'interest rate', 'loan rate')) return { intent: 'forecast', id: 'mortgage_rate' };
   if (has('cinema', 'theatre', 'theater', 'football') && has('stop', 'cut', 'less', 'skip')) return { intent: 'forecast', id: 'cut_leisure' };

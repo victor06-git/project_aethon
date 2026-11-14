@@ -7,6 +7,7 @@ import { createServer as createVite } from 'vite';
 import { config } from '../../config';
 import { createContainer } from '../../container';
 import { createLlm } from '../../infrastructure/llm';
+import { createKaikuCoach } from '../../infrastructure/llm/kaikuCoach';
 import { loadCsvTransactions } from '../../infrastructure/repositories/csvTransactions';
 
 const log = (msg: string) => console.warn(`[revi] ${msg}`);
@@ -32,7 +33,8 @@ const json = (res: http.ServerResponse, status: number, obj: unknown) => {
 async function main() {
   const transactions = await loadTransactions();
   const model = createLlm(config);
-  const app = createContainer({ transactions, model, log });
+  const kaiku = config.kaiku.url ? createKaikuCoach(config.kaiku) : null;
+  const app = createContainer({ transactions, model, kaiku, log });
   const server = http.createServer();
   // Vite serves the React app and live-reloads it over the same port (hot module replacement).
   const vite = await createVite({
@@ -61,6 +63,7 @@ async function main() {
   server.listen(config.port, () => {
     console.log(`Revi preview: http://localhost:${config.port}`);
     console.log(model ? `Coach model: ${config.provider} ${config.provider === 'gemini' ? config.gemini.model : ''} (rules as fallback)` : 'Coach model: off, rules only');
+    console.log(kaiku ? `Kaiku coach: ${config.kaiku.url} (letters + unsupported questions; local answers as fallback)` : 'Kaiku coach: off (set REVI_KAIKU_URL; see src/project_aethon/kaiku_service.py)');
   });
 }
 

@@ -104,3 +104,34 @@ test('the predefined suggested questions are all answerable', async () => {
     assert.deepEqual([r.intent, r.id], [q.intent, q.id], q.text);
   }
 });
+
+test('an unsupported question is answered by the Kaiku coach when configured', async () => {
+  const kaiku = {
+    ask: async (q: string) => ({
+      type: 'fact' as const,
+      text: `Grounded answer to: ${q} [1]`,
+      sources: [{ k: 1, official: true, domain: 'suomenpankki.fi', title: 'Euribor rates', url: 'https://www.suomenpankki.fi/x', published: '2026-11-13', fragment: '3.328 %' }]
+    })
+  };
+  const r = await ask(createContainer({ kaiku }), 'What is the 12-month Euribor today?');
+  assert.equal(r.source, 'model');
+  assert.ok(r.sources?.[0].official);
+});
+
+test('a failing Kaiku coach falls back to the local answer', async () => {
+  const logs: string[] = [];
+  const kaiku = { ask: async () => { throw new Error('service down'); } };
+  const app = createContainer({ kaiku, log: (m) => logs.push(m) });
+  const r = await ask(app, 'my rent went up, is it legal?');
+  assert.equal(r.type, 'action');
+  assert.equal(r.source, 'rules');
+  assert.match(logs.join(' '), /kaiku failed/);
+});
+
+test('supported local intents do not go to Kaiku (the City demo stays local)', async () => {
+  let called = 0;
+  const kaiku = { ask: async () => { called += 1; return { type: 'fact' as const, text: 'x' }; } };
+  const r = await ask(createContainer({ kaiku }), 'What happens if I stop ordering food delivery?');
+  assert.equal(r.scenarioId, 'stop_food');
+  assert.equal(called, 0);
+});

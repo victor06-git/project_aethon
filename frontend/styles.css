@@ -260,3 +260,17 @@ h1, h2, h3 { margin: 0; }
 .k-back:hover { background: #f1faf3; }
 .k-head-orb { width: 28px; height: 28px; }
 .k-launcher.hidden { opacity: 0; pointer-events: none; }
+
+/* ---- Kaiku sources: the evidence under an answer (Assistant.tsx) ---- */
+.k-sources { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; font-size: 13px; }
+.k-sources summary { cursor: pointer; color: var(--deep); font-weight: 700; }
+.k-source { display: flex; gap: 8px; margin-top: 8px; align-items: flex-start; }
+.k-badge { flex: none; font-size: 10px; font-weight: 800; letter-spacing: 0.4px; padding: 2px 6px; border-radius: 6px; background: #eef1ee; color: var(--muted); }
+.k-badge.official { background: var(--mint); color: var(--deep); }
+.k-badge.data { background: #eaf1fb; color: #27568b; }
+.k-source-body { min-width: 0; overflow-wrap: anywhere; }
+.k-source-body a { color: var(--deep); font-weight: 700; }
+.k-source-title { color: var(--muted); }
+.k-source-quote { font-style: italic; margin: 2px 0; }
+.k-trace { margin-top: 8px; color: var(--muted); font-size: 12px; }
+.k-msg .k-noev { color: #8a6116; }

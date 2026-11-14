@@ -42,6 +42,12 @@ export const config = {
     baseUrl: env.REVI_GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com',
     timeoutMs: Number(env.REVI_LLM_TIMEOUT_MS) || 8000
   },
+  // Kaiku: the full Python coach (web evidence via Exa + the user's data). When the URL is
+  // set, letters and anything the local intents cannot answer go there.
+  kaiku: {
+    url: env.REVI_KAIKU_URL || '',
+    timeoutMs: Number(env.REVI_KAIKU_TIMEOUT_MS) || 35000
+  },
   openai: {
     url: env.REVI_LLM_URL || '',
     key: env.REVI_LLM_KEY || '',

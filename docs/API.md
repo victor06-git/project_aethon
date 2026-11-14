@@ -21,12 +21,22 @@ Response (one answer; fields beyond `type` and `text` are optional):
   "rows": [{ "label": "Groceries", "amount": 379.79 }],
   "letter": { "subject": "…", "body": "…" },
   "examples": ["Suggested question", "…"],
-  "source": "model | rules"
+  "source": "model | rules",
+  "sources": [{ "k": 1, "official": true, "domain": "kela.fi", "title": "…", "url": "https://…", "published": "2026-01-02", "fragment": "quoted text…" }],
+  "dataUsed": { "period": "2026-10-01 to 2026-10-31", "transactions": 2, "note": "synthetic sample transactions" },
+  "trace": { "route": "web", "decidedBy": "model", "llmCalls": 2, "tokens": 1120, "seconds": 9.6 },
+  "noEvidence": false
 }
 ```
 
 The UI shows `figure` large, `range` small, a bar chart for `rows`, a send-it-yourself letter for `letter`,
 "View in 3D City →" when `scenarioId` is set, and tappable `examples` for `clarify`.
+
+`sources`, `dataUsed`, `trace` and `noEvidence` come from the **Kaiku coach** (the Python service in
+`src/project_aethon/kaiku_service.py`, enabled with `REVI_KAIKU_URL`): numbered citations tagged
+OFFICIAL/WEB with the quoted fragment, date and link, rendered under "Sources" in the assistant.
+When Kaiku is on, it answers letters and every question outside the local intent list; if it fails,
+the local coach answers and the app keeps working.
 
 ### Other coach routes
 | Method | Path | Returns |

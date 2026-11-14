@@ -44,7 +44,7 @@ function AnswerBubble({ a }: { a: Answer }) {
   };
   return (
     <div className="k-msg bot">
-      <div>{a.text}</div>
+      <div className={a.noEvidence ? 'k-noev' : undefined}>{a.text}</div>
       {a.figure && <div className="figure">{a.figure}</div>}
       {a.range && <div className="range">{a.range}</div>}
       {a.rows && (
@@ -59,6 +59,32 @@ function AnswerBubble({ a }: { a: Answer }) {
           <div className="letter"><strong>{a.letter.subject}</strong>{'\n\n'}{a.letter.body}</div>
           <button type="submit" className="k-action">Send letter (your decision)</button>
         </form>
+      )}
+      {((a.sources && a.sources.length > 0) || a.dataUsed) && (
+        <details className="k-sources">
+          <summary>Sources ({(a.sources?.length ?? 0) + (a.dataUsed ? 1 : 0)}){a.trace ? ` · ${a.trace.route} · ${a.trace.seconds}s` : ''}</summary>
+          {(a.sources ?? []).map((s) => (
+            <div key={s.k} className="k-source">
+              <span className={`k-badge${s.official ? ' official' : ''}`}>{s.official ? 'OFFICIAL' : 'WEB'}</span>
+              <div className="k-source-body">
+                <b>[{s.k}] {s.domain}</b> · {s.published ?? 'no date'}
+                <div className="k-source-title">{s.title}</div>
+                {s.fragment && <div className="k-source-quote">“{s.fragment}”</div>}
+                <a href={s.url} target="_blank" rel="noreferrer">Open source</a>
+              </div>
+            </div>
+          ))}
+          {a.dataUsed && (
+            <div className="k-source">
+              <span className="k-badge data">DATA</span>
+              <div className="k-source-body">
+                <b>Your bank transactions</b> · {a.dataUsed.period} · {a.dataUsed.transactions} tx
+                {a.dataUsed.note && <div className="k-source-title">{a.dataUsed.note}</div>}
+              </div>
+            </div>
+          )}
+          {a.trace && <div className="k-trace">{a.trace.decidedBy} · {a.trace.llmCalls} model call{a.trace.llmCalls === 1 ? '' : 's'} · {a.trace.tokens} tokens{a.trace.cached ? ' · cached' : ''}</div>}
+        </details>
       )}
       {a.scenarioId && <button type="button" className="k-action" onClick={() => nav.openCity(a.scenarioId)}>View in 3D City <Icon name="arrow" size={16} /></button>}
       {a.examples && a.examples.length > 0 && (
