@@ -25,6 +25,10 @@ const apiKey = env.GEMINI_API_KEY || env.GOOGLE_API_KEY || '';
 const wanted = (env.REVI_LLM_PROVIDER || 'auto').toLowerCase();
 const provider = wanted === 'auto' ? (apiKey ? 'gemini' : env.REVI_LLM_URL ? 'openai' : 'none') : wanted;
 const resolve = (p: string) => (path.isAbsolute(p) ? p : path.join(ROOT, p));
+const timeout = (value: string | undefined, fallback: number) => {
+  const ms = Number(value);
+  return Number.isSafeInteger(ms) && ms > 0 && ms <= 300_000 ? ms : fallback;
+};
 
 export const config = {
   root: ROOT,
@@ -40,10 +44,11 @@ export const config = {
   gemini: {
     apiKey,
     model: env.REVI_LLM_MODEL || 'gemini-3.8-flash',
+    fallbackModel: env.REVI_LLM_FALLBACK_MODEL?.trim() ?? 'gemini-3.5-flash-lite',
     baseUrl: env.REVI_GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com',
-    timeoutMs: Number(env.REVI_LLM_TIMEOUT_MS) || 8000,
-    // The trainer agent makes several calls per answer (tools, then text), so it gets longer.
-    agentTimeoutMs: Number(env.REVI_AGENT_TIMEOUT_MS) || 20000
+    timeoutMs: timeout(env.REVI_LLM_TIMEOUT_MS, 8000),
+    // The whole trainer turn shares this deadline, including waits and follow-up model calls.
+    agentTimeoutMs: timeout(env.REVI_AGENT_TIMEOUT_MS, 20000)
   },
   // Exa web search: live prices and benchmarks for the trainer. Off without a key.
   exa: { apiKey: env.EXA_API_KEY || '', baseUrl: env.REVI_EXA_BASE_URL || 'https://api.exa.ai', timeoutMs: Number(env.REVI_EXA_TIMEOUT_MS) || 8000 },

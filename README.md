@@ -46,6 +46,8 @@ shows a weekly safe-to-spend with its math, lets you correct its assumptions, si
 
 - **Gemini** (`GEMINI_API_KEY`, `gemini-3.8-flash`, `@google/genai`) answers by function calling: it picks tools,
   the app computes every figure, and a reply with a figure no tool returned is replaced by the computed text.
+  If the primary model is unavailable before a tool runs, Revi can use `REVI_LLM_FALLBACK_MODEL` (default `gemini-3.5-flash-lite`).
+  When Gemini is unavailable mid-turn, Revi displays the tool result it already computed. Built-in rules and action buttons keep the core coaching flow usable if both models are unavailable.
 - **Exa** (`EXA_API_KEY`) does the outside research. `research_goal` searches for current options and typical prices, running costs and loan conditions. A figure enters the plan only when a source passage supports it. `search_web` handles public questions and returns the passages and links.
 - A goal starts as a brief you confirm. After agreeing a plan you choose what is monitored (prices, conditions, your spending);
   monitoring runs when you open the plan, not in the background. When something changed you choose: contribute less, reach the goal sooner, or keep a larger buffer.
