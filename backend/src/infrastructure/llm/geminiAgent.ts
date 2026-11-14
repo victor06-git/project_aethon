@@ -4,36 +4,54 @@
 import { GoogleGenAI, ThinkingLevel, type Content, type FunctionCall, type GenerateContentConfig, type Part } from '@google/genai';
 import type { AgentModel, AgentRequest } from '../../application/ports';
 import type { Config } from '../../config';
+import { createGeminiRequests } from './geminiRequests';
 
 const DEFAULT_MAX_STEPS = 6;
 const TEMPERATURE = 0.2;
 
 // The part of the SDK this adapter uses, so tests can pass a scripted client.
-interface GeminiReply { functionCalls?: FunctionCall[]; text?: string; candidates?: { content?: Content }[] }
+interface GeminiReply { functionCalls?: FunctionCall[]; text?: string; candidates?: { content?: Content; finishReason?: string }[] }
 export interface GeminiClient {
   models: { generateContent(request: { model: string; contents: Content[]; config: GenerateContentConfig }): Promise<GeminiReply> };
 }
 
-export interface GeminiAgentOptions { apiKey: string; model: string; timeoutMs?: number; client?: GeminiClient }
+export interface GeminiAgentOptions {
+  apiKey: string;
+  model: string;
+  fallbackModel?: string;
+  baseUrl?: string;
+  timeoutMs?: number;
+  requestTimeoutMs?: number;
+  client?: GeminiClient;
+}
 
-export function createGeminiAgent({ apiKey, model, timeoutMs = 20000, client }: GeminiAgentOptions): AgentModel {
-  const ai: GeminiClient = client ?? new GoogleGenAI({ apiKey, httpOptions: { timeout: timeoutMs } });
+export function createGeminiAgent({ apiKey, model, fallbackModel, baseUrl, timeoutMs = 20000, requestTimeoutMs, client }: GeminiAgentOptions): AgentModel {
+  const ai: GeminiClient = client ?? new GoogleGenAI({ apiKey, httpOptions: { ...(baseUrl ? { baseUrl } : {}), retryOptions: { attempts: 1 } } });
+  const { startTurn } = createGeminiRequests({ model, fallbackModel, timeoutMs, requestTimeoutMs });
   return {
     async run({ system, turns, tools, execute, maxSteps = DEFAULT_MAX_STEPS }: AgentRequest): Promise<string> {
+      const request = startTurn();
       const config: GenerateContentConfig = {
         systemInstruction: system,
-        // Gemini 3 models are tuned for their default temperature. Keep the chat loop responsive.
-        ...(model.startsWith('gemini-3.') ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } } : { temperature: TEMPERATURE }),
+        maxOutputTokens: 2048,
         tools: [{ functionDeclarations: tools.map((t) => ({ name: t.name, description: t.description, parametersJsonSchema: t.parameters })) }]
       };
       let contents: Content[] = turns.map((t) => ({ role: t.role === 'assistant' ? 'model' : 'user', parts: [{ text: t.text }] }));
 
       for (let step = 0; step < maxSteps; step++) {
-        const reply = await ai.models.generateContent({ model, contents, config });
+        const reply = await request((modelId, abortSignal) => ai.models.generateContent({
+          model: modelId, contents, config: {
+            ...config, abortSignal,
+            // Use each Gemini model's supported low-cost thinking setting.
+            ...(modelId.startsWith('gemini-3.') || modelId.startsWith('gemini-4-')
+              ? { thinkingConfig: { thinkingLevel: modelId === 'gemini-3.5-flash-lite' ? ThinkingLevel.MINIMAL : ThinkingLevel.LOW } }
+              : { temperature: TEMPERATURE })
+          }
+        }));
         const calls = reply.functionCalls ?? [];
         if (!calls.length) {
           const text = reply.text?.trim();
-          if (!text) throw new Error('Gemini returned no text');
+          if (!text || reply.candidates?.[0]?.finishReason === 'MAX_TOKENS') throw new Error('Gemini did not finish its answer.');
           return text;
         }
         // Tools run one after another: a later call may depend on what an earlier one changed.
@@ -54,5 +72,5 @@ export function createGeminiAgent({ apiKey, model, timeoutMs = 20000, client }: 
 /** Null when no Gemini key is configured (or the model is switched off): the trainer then uses its rules. */
 export function createAgent(config: Config): AgentModel | null {
   if (config.provider !== 'gemini' || !config.gemini.apiKey) return null;
-  return createGeminiAgent({ apiKey: config.gemini.apiKey, model: config.gemini.model, timeoutMs: config.gemini.agentTimeoutMs });
+  return createGeminiAgent({ ...config.gemini, timeoutMs: config.gemini.agentTimeoutMs, requestTimeoutMs: config.gemini.timeoutMs });
 }
