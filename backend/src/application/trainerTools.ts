@@ -146,7 +146,7 @@ function goalAnswer(goal: GoalDraft, ctx: TrainerContext, intro = ''): Answer {
   return {
     type: 'scenario', text: `${intro}${text}${upfront}${cushion}${assumptions}${investment}`, goal, scenarios: sim.scenarios,
     nextStep: nextStepFor(sim.scenarios, ctx), ...(sim.fixes.length ? { fixes: sim.fixes } : {}),
-    followUps: plan.feasible ? ['Agree this plan', 'Research with Exa'] : ['Research with Exa']
+    followUps: plan.feasible ? ['Agree this plan'] : []
   };
 }
 
@@ -157,6 +157,13 @@ function nextStepFor(scenarios: Answer['scenarios'] & object, ctx: TrainerContex
     return {
       title: 'Prepared next step', ask: 'Agree this plan',
       detail: `A monthly transfer of ${eur(plan.monthlyNeeded)} to your savings, starting on payday, ${longDate(ctx.cashflow.safe.until)}. Agree the plan and I set it aside for you.`
+    };
+  }
+  // Saving works but running it afterwards does not: waiting cannot fix that, so say what can.
+  if (plan.gap <= 0 && plan.afterFree < 0) {
+    return {
+      title: 'Next step: make the running costs fit', screen: 'plan',
+      detail: `Saving works, but after buying it costs ${eur(plan.afterMonthly)} a month, ${eur(-plan.afterFree)} more than you free up. Open the plan to try a lower price, no resident parking or a small spending cut with the sliders, then save the version that fits.`
     };
   }
   const fits = others.find((s) => s.feasible);
@@ -183,7 +190,7 @@ function briefAnswer(goal: GoalDraft, ctx: TrainerContext, intro = ''): Answer {
   ];
   return {
     type: 'brief', goal, text: `${intro}Here is the brief as I understand it:\n${lines.join('\n')}\nIs this right?`,
-    followUps: goal.price > 0 ? ['Yes, that is right', 'Make it 18 months', 'The budget is €12,000'] : ['Research with Exa', 'The budget is €3,000']
+    followUps: goal.price > 0 ? ['Yes, that is right', 'Make it 18 months', 'The budget is €12,000'] : ['The budget is €3,000']
   };
 }
 
@@ -291,6 +298,36 @@ export function createTrainerTools({ transactions, external, coach, research, lo
     return { cashflow, transactions: list, savings, asOf };
   }
 
+  /** Researches a goal with Exa and explains what changed. Runs on its own when a brief is confirmed. */
+  async function researched(goal: GoalDraft, state: TrainerState, ctx: TrainerContext, prefix = ''): Promise<ToolOutcome> {
+    const r = await researchGoal(goal, new Date().getUTCFullYear().toString(), research!, log);
+    // A budget the user set stays theirs: research adds listings and costs around it.
+    if (goal.priceSource === 'user') r.goal = { ...r.goal, price: goal.price, priceSource: 'user' };
+    const shown = showGoal(r.goal, ctx);
+    const previous = goal.confirmed ? simulate(goal, ctx).scenarios[0] : undefined;
+    const current = shown.scenarios?.[0];
+    const next = { ...state, draft: r.goal };
+    const lines = [
+      ...r.found.map((f) => `- ${f}`),
+      ...(r.missing.length ? [`- No source stated clearly: ${r.missing.join(', ')}. The plan keeps the amounts already shown for those costs.`] : []),
+      ...(r.failed.length ? [`- Exa could not check ${r.failed.join(', ')}. You can retry the search.`] : []),
+      ...(r.goal.options.length ? ['Pick a listing to see what its price would mean for your plan. Confirm the price and availability with the seller before committing.'] : []),
+      ...(previous && current && previous.monthlyNeeded !== current.monthlyNeeded
+        ? [`The same timeline now needs **${eur(current.monthlyNeeded)} a month** in savings (previously ${eur(previous.monthlyNeeded)}).`] : []),
+      ...(previous && current && previous.afterMonthly !== current.afterMonthly
+        ? [`After buying, the estimate is now **${eur(current.afterMonthly)} a month** (previously ${eur(previous.afterMonthly)}).`] : []),
+      ...(state.plan && !state.draft ? ['Review this draft and save it if you want to update your agreed plan.'] : []),
+      ...(!r.goal.confirmed && r.goal.price > 0 ? ['Confirm the draft budget and timeline to calculate your savings plan.'] : [])
+    ];
+    const intro = r.found.length
+      ? `I researched **${goal.name}** with Exa (${r.sources.length} sources).`
+      : r.failed.length === r.queries.length
+        ? 'Exa could not complete the searches for this goal.'
+        : 'The Exa search returned no verified figures for this goal.';
+    const text = [prefix + intro, ...lines].join('\n');
+    return { answer: { ...shown, type: 'research', text, sources: r.sources }, state: next, sources: r.sources, activity: r.queries.map((q) => `Asked Exa: ${q}`) };
+  }
+
   const handlers: Record<string, Handler> = {
     get_safe_to_spend: (_, { state }, ctx) => ({ answer: safeAnswer(ctx.cashflow), state }),
 
@@ -346,11 +383,20 @@ export function createTrainerTools({ transactions, external, coach, research, lo
       return { answer: briefAnswer(draft, ctx), state: { ...state, draft } };
     },
 
-    confirm_brief: (_, { state }, ctx) => {
+    // Confirming the brief runs the numbers and, when Exa is on, researches the goal in the same
+    // step: current prices and listings, running costs, loan terms. No separate button to press.
+    confirm_brief: async (_, { state }, ctx) => {
       if (!state.draft) return { answer: NO_GOAL(), state };
-      if (state.draft.price <= 0) return { answer: briefAnswer(state.draft, ctx, 'One thing is missing: the budget. '), state };
-      const draft = { ...state.draft, confirmed: true };
-      return { answer: goalAnswer(draft, ctx, 'Brief confirmed. '), state: { ...state, draft } };
+      let goal = state.draft;
+      if (goal.price <= 0 && research) {
+        // No budget yet: look up a typical price first and use it for the plan.
+        const found = await researchGoal(goal, new Date().getUTCFullYear().toString(), research, log);
+        if (found.goal.price > 0) goal = found.goal;
+      }
+      if (goal.price <= 0) return { answer: briefAnswer(goal, ctx, 'One thing is missing: the budget. '), state: { ...state, draft: goal } };
+      const draft = { ...goal, confirmed: true };
+      if (!research) return { answer: goalAnswer(draft, ctx, 'Brief confirmed. '), state: { ...state, draft } };
+      return researched(draft, { ...state, draft }, ctx, 'Brief confirmed. ');
     },
 
     what_if: (args, { state }, ctx) => {
@@ -392,30 +438,7 @@ export function createTrainerTools({ transactions, external, coach, research, lo
       if (!goal) return { answer: NO_GOAL(), state };
       if (!goal.confirmed && goal.price > 0) return { answer: briefAnswer(goal, ctx, 'Confirm the brief to research this goal. '), state };
       if (!research) return { answer: { ...showGoal(goal, ctx), type: 'research', text: RESEARCH_OFF }, state };
-      const r = await researchGoal(goal, new Date().getUTCFullYear().toString(), research, log);
-      const shown = showGoal(r.goal, ctx);
-      const previous = goal.confirmed ? simulate(goal, ctx).scenarios[0] : undefined;
-      const current = shown.scenarios?.[0];
-      const next = { ...state, draft: r.goal };
-      const lines = [
-        ...r.found.map((f) => `- ${f}`),
-        ...(r.missing.length ? [`- No source stated clearly: ${r.missing.join(', ')}. The plan keeps the amounts already shown for those costs.`] : []),
-        ...(r.failed.length ? [`- Exa could not check ${r.failed.join(', ')}. You can retry the search.`] : []),
-        ...(r.goal.options.length ? ['Pick a listing to see what its price would mean for your plan. Confirm the price and availability with the seller before committing.'] : []),
-        ...(previous && current && previous.monthlyNeeded !== current.monthlyNeeded
-          ? [`The same timeline now needs **${eur(current.monthlyNeeded)} a month** in savings (previously ${eur(previous.monthlyNeeded)}).`] : []),
-        ...(previous && current && previous.afterMonthly !== current.afterMonthly
-          ? [`After buying, the estimate is now **${eur(current.afterMonthly)} a month** (previously ${eur(previous.afterMonthly)}).`] : []),
-        ...(state.plan && !state.draft ? ['Review this draft and save it if you want to update your agreed plan.'] : []),
-        ...(!r.goal.confirmed && r.goal.price > 0 ? ['Confirm the draft budget and timeline to calculate your savings plan.'] : [])
-      ];
-      const intro = r.found.length
-        ? `I researched **${goal.name}** with Exa (${r.sources.length} sources).`
-        : r.failed.length === r.queries.length
-          ? 'Exa could not complete the searches for this goal.'
-          : 'The Exa search returned no verified figures for this goal.';
-      const text = [intro, ...lines].join('\n');
-      return { answer: { ...shown, type: 'research', text, sources: r.sources }, state: next, sources: r.sources, activity: r.queries.map((q) => `Asked Exa: ${q}`) };
+      return researched(goal, state, ctx);
     },
 
     choose_option: (args, { state }, ctx) => {

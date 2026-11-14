@@ -30,7 +30,7 @@ const TOOL_STEP: Record<string, { doing: string; done: string }> = {
   get_spending_profile: { doing: 'Looking at how you spend', done: 'Looked at how you spend' },
   reclassify: { doing: 'Moving that payment and recalculating', done: 'Moved the payment and recalculated' },
   simulate_goal: { doing: 'Writing up the brief', done: 'Wrote up the brief for you to confirm' },
-  confirm_brief: { doing: 'Running the numbers', done: 'Ran the numbers' },
+  confirm_brief: { doing: 'Running the numbers and checking prices with Exa', done: 'Ran the numbers and checked prices with Exa' },
   what_if: { doing: 'Recalculating with your change', done: 'Recalculated with your change' },
   research_goal: { doing: 'Researching on the web with Exa', done: 'Researched on the web with Exa' },
   choose_option: { doing: 'Using the option you picked', done: 'Used the option you picked' },

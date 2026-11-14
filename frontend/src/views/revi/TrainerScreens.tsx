@@ -340,7 +340,6 @@ export function PlanScreen() {
             <>
               <BriefCard key={`${draft.name}-${draft.price}-${draft.months}`} goal={draft} busy={busy}
                 onConfirm={() => { void act('confirm_brief'); }} onChange={(change) => { void act('what_if', change); }} />
-              {draft.price <= 0 && <Btn label="Look up the price with Exa" disabled={busy} onClick={() => { void act('research_goal'); }} />}
             </>
           ) : (
             <>
@@ -357,7 +356,6 @@ export function PlanScreen() {
                     <ScenarioChange previous={previous.scenarios[0]} current={answer.scenarios[0]} />}
                   <ScenarioCards scenarios={answer.scenarios} />
                   <div className="actions">
-                    <Btn label="Research with Exa" primary disabled={busy} onClick={() => { void act('research_goal'); }} />
                     <Btn label="Try 3 more months" disabled={busy || draft.months > 237} onClick={() => { void act('what_if', { add_months: 3 }); }} />
                     {answer.scenarios[0]?.feasible && <Btn label="Save plan" disabled={busy} onClick={() => { void act('agree_plan'); }} />}
                   </div>

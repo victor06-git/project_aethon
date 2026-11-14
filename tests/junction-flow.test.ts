@@ -52,9 +52,11 @@ test('a verified price change recalculates a proposed path and waits for accepta
     async search() { return [source]; },
     async extract() { return { content: { typical_price_eur: 2500 }, grounding: [{ field: 'typical_price_eur', confidence: 'high', urls: [source.url] }], sources: [source] }; }
   } });
-  const brief = await act(app, 'simulate_goal', { kind: 'purchase', name: 'bicycle', price: 3200, months: 18 });
-  const confirmed = await act(app, 'confirm_brief', {}, brief.state);
-  const saved = await act(app, 'agree_plan', {}, confirmed.state);
+  // Agreed before the market moved (no Exa then); the state travels with the client.
+  const plain = createContainer();
+  const brief = await act(plain, 'simulate_goal', { kind: 'purchase', name: 'bicycle', price: 3200, months: 18 });
+  const confirmed = await act(plain, 'confirm_brief', {}, brief.state);
+  const saved = await act(plain, 'agree_plan', {}, confirmed.state);
   const opted = await act(app, 'set_monitoring', { prices: true }, saved.state);
   const check = await act(app, 'recheck_plan', {}, opted.state);
   const plan = check.state.plan!;
