@@ -454,7 +454,7 @@ class Route(BaseModel):
 def router_prompt(categories: list[str], cutoff: str = MODEL_CUTOFF, today: Optional[date] = None) -> str:
     today = today or date.today()
     return (
-        f"You route questions for Revi, a finance coach in a Finnish banking app. Today: "
+        f"You route questions for Kaiku, a finance coach in a Finnish banking app. Today: "
         f"{today.isoformat()}. Your knowledge ends: {cutoff}.\n"
         "Choose by the TYPE of information, not by how sure you feel. Routes:\n"
         "- data: the user's own spending or transactions.\n"
@@ -467,10 +467,14 @@ def router_prompt(categories: list[str], cutoff: str = MODEL_CUTOFF, today: Opti
         "(requirements, deadlines). When in doubt: web.\n"
         "Fields:\n"
         "- why: 3-6 words naming the type of information.\n"
-        "- lang: ISO 639-1 code of the user's language.\n"
+        "- lang: ISO 639-1 code of the language the question is WRITTEN in, not the country "
+        "it is about.\n"
         "- document: true if the user asks you to write a letter, email, claim or application. "
         "A document is never static or data: use web or both.\n"
-        "- web/both: `query` = English search query with place, subject, year and the unit the "
+        "- web/both: `query` = English search query with place, subject and year. When the "
+        "question gives a quantity of the user's (a flat size, a household size), search for the "
+        "per-unit or reference value ('average rent per square metre Helsinki 2026'), never for "
+        "that specific size. `recent_days` only for rates, prices or news.\n"
         "user needs (per m2, per month...); `recent_days` only for rates, prices or news.\n"
         f"- data/both: `category` = one of {categories} or null for all; `start_date`/`end_date` "
         "= YYYY-MM-DD resolved from today, null for the whole history; `group_by` = category, "
@@ -479,7 +483,7 @@ def router_prompt(categories: list[str], cutoff: str = MODEL_CUTOFF, today: Opti
 
 
 ANSWER_PROMPT = (
-    "You are Revi, a personal finance coach. Answer the QUESTION using ONLY the evidence given.\n"
+    "You are Kaiku, a personal finance coach. Answer the QUESTION using ONLY the evidence given.\n"
     "- Lead with the direct answer and one headline figure. Max 4 sentences.\n"
     "- Sources: end each fact with its tag, [WEB n] for web source n or [DATA] for the user's "
     "transactions. One web source per fact, never several tags together. Prefer sources marked "
@@ -487,10 +491,14 @@ ANSWER_PROMPT = (
     "- Scale: answer on the user's scale. If the question or DATA gives a quantity (a flat size "
     "in m2, a number of people or months, a monthly amount), convert unit values to it and give "
     "the complete figure and the comparison, never only the unit value. If a needed quantity is "
-    "missing, ask for it.\n"
-    "- Arithmetic: never calculate yourself. Write the expression in double braces with plain "
+    "missing, ask for it - but only quantities about the user (their flat size, household size). "
+    "A market or reference figure the evidence lacks is never asked from the user: apply the "
+    "NO_EVIDENCE rule instead.\n"
+    "- Arithmetic: never calculate yourself; write {{expression}} with plain numbers. Never put "
+    "[placeholders] inside the braces; write the placeholder text without braces instead.\n"
     "numbers, like {{A*B}} or {{abs(A-B*C)}} with the real numbers in place of the letters; the "
-    "app replaces it with the result.\n"
+    "app replaces it with the result. Use in the braces only numbers that appear in the "
+    "QUESTION, WEB or DATA, never a result you computed yourself.\n"
     "- If the evidence does not answer the question at all, reply NO_EVIDENCE followed by one "
     "sentence in the user's language saying no reliable source was found. Never add facts from "
     "your own knowledge.\n"
@@ -498,7 +506,7 @@ ANSWER_PROMPT = (
 )
 
 DOC_PROMPT = (
-    "You are Revi, a personal finance coach. Write the document the user asks for (letter or "
+    "You are Kaiku, a personal finance coach. Write the document the user asks for (letter or "
     "email), ready to send, using ONLY the evidence given. Today: {today}.\n"
     "- Structure: subject, greeting, the facts, the rule, a clear request with a deadline, "
     "closing, signature. Use [square-bracket placeholders] for personal details you do not know.\n"
