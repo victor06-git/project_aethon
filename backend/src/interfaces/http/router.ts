@@ -6,7 +6,8 @@ import type { CoachService } from '../../application/coachService';
 import type { TrainerService } from '../../application/trainerService';
 
 type Query = Record<string, string>;
-type Handler = (params: Record<string, string>, query: Query, body: any) => unknown;
+type Emit = (event: { type: 'step'; step: unknown }) => void;
+type Handler = (params: Record<string, string>, query: Query, body: any, emit?: Emit) => unknown;
 interface Route { method: string; re: RegExp; keys: string[]; handler: Handler }
 
 function compile(method: string, pattern: string, handler: Handler): Route {
@@ -21,8 +22,8 @@ export function createRouter({ bank, coach, trainer }: { bank: BankService; coac
     compile('GET', '/api/trainer/status', () => trainer.status()),
     compile('GET', '/api/trainer/cashflow', () => trainer.cashflow(undefined)),
     compile('POST', '/api/trainer/cashflow', (p, q, body) => trainer.cashflow(body)),
-    compile('POST', '/api/trainer/chat', (p, q, body) => trainer.chat(body)),
-    compile('POST', '/api/trainer/action', (p, q, body) => trainer.action(body)),
+    compile('POST', '/api/trainer/chat', (p, q, body, emit) => trainer.chat(body, emit)),
+    compile('POST', '/api/trainer/action', (p, q, body, emit) => trainer.action(body, emit)),
     // Banking
     compile('GET', '/api/bootstrap', () => ({ bank: bank.bank(), profile: bank.profile(), data: bank.dataSource(), suggestions: coach.suggestions(), safeToSpend: coach.safeToSpend() })),
     compile('GET', '/api/home', () => bank.home()),
@@ -56,14 +57,14 @@ export function createRouter({ bank, coach, trainer }: { bank: BankService; coac
   ];
 
   return {
-    async handle(method: string, path: string, body?: unknown, query: Query = {}): Promise<any> {
+    async handle(method: string, path: string, body?: unknown, query: Query = {}, emit?: Emit): Promise<any> {
       for (const r of routes) {
         if (r.method !== method) continue;
         const m = path.match(r.re);
         if (!m) continue;
         const params: Record<string, string> = {};
         r.keys.forEach((k, i) => (params[k] = decodeURIComponent(m[i + 1])));
-        return r.handler(params, query, body);
+        return r.handler(params, query, body, emit);
       }
       throw httpError(404, 'Not found');
     }

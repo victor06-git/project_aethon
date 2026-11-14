@@ -5,7 +5,7 @@ import { addMonths, longDate } from './dates';
 import { basketMonthly } from './cashflow';
 import {
   CUT_GROUPS, LIMITS, eur,
-  type Cashflow, type CostItem, type GoalDraft, type GoalKind, type LoanTerms, type GoalScenario, type PlanChoice, type SpendingCut
+  type Cashflow, type CostItem, type GapFix, type GoalDraft, type GoalKind, type LoanTerms, type GoalScenario, type PlanChoice, type SpendingCut, type CashLine
 } from './trainer';
 
 // Starting assumptions. They are shown to the user as assumptions and replaced by
@@ -46,15 +46,21 @@ export interface WhatIf {
 
 const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));
 
+/** The loan rate Exa found for this goal, if any, with its source. */
 function researchedRate(goal: GoalDraft): Partial<LoanTerms> {
-  const found = goal.benchmarks.find((b) => b.topic === 'loan' && b.unit === 'percent' && b.value !== undefined);
-  return found ? { ratePct: found.value } : {};
+  const found = goal.benchmarks.find((b) => b.topic === 'loan_rate' && b.unit === 'percent' && b.value !== undefined && b.url);
+  return found ? { ratePct: found.value, rateSource: 'research', rateUrl: found.url } : {};
 }
 
 function nextLoan(goal: GoalDraft, change: WhatIf['loan']): LoanTerms | null {
   if (change === false) return null;
   if (!change) return goal.loan;
-  return { ...DEFAULT_LOAN, ...researchedRate(goal), ...goal.loan, ...change };
+  const base: LoanTerms = goal.loan ?? { ...DEFAULT_LOAN, rateSource: 'assumption', ...researchedRate(goal) };
+  const { rateUrl: oldUrl, ...rest } = base;
+  const next: LoanTerms = { ...rest, ...change };
+  // A rate the user typed is theirs; one that came with the loan keeps its source.
+  if (change.ratePct !== undefined) return { ...next, rateSource: 'user' };
+  return oldUrl ? { ...next, rateUrl: oldUrl } : next;
 }
 
 export function applyWhatIf(goal: GoalDraft, change: WhatIf): GoalDraft {
@@ -73,11 +79,18 @@ export function applyWhatIf(goal: GoalDraft, change: WhatIf): GoalDraft {
 }
 
 /** Euros a month freed by the cuts. A line matched by several cuts counts once, at the largest cut. */
+/** Does a cut apply to this payment line? All everyday spending, a named group, or one category of the user's own data. */
+export function cutApplies(group: string, line: CashLine): boolean {
+  if (group === 'everyday') return true;
+  if (CUT_GROUPS[group]) return CUT_GROUPS[group].match.test(`${line.label} ${line.category}`);
+  const name = group.toLowerCase();
+  return line.category.toLowerCase() === name || line.label.toLowerCase() === name;
+}
+
 export function cutGain(cuts: SpendingCut[], cashflow: Cashflow): number {
   const everyday = cashflow.baskets.find((b) => b.basket === 'everyday')?.lines ?? [];
   const gain = everyday.reduce((total, line) => {
-    const words = `${line.label} ${line.category}`;
-    const pct = Math.max(0, ...cuts.filter((c) => CUT_GROUPS[c.group]?.match.test(words)).map((c) => c.pct));
+    const pct = Math.max(0, ...cuts.filter((c) => cutApplies(c.group, line)).map((c) => c.pct));
     return total + (line.monthly * pct) / 100;
   }, 0);
   return round2(gain);
@@ -107,11 +120,15 @@ function scenarioNotes(s: Pick<GoalScenario, 'gap' | 'monthlyNeeded' | 'monthlyC
 function scenario(id: string, label: string, goal: GoalDraft, { capacity, start, asOf }: Basis): GoalScenario {
   const toSave = Math.max(0, goal.price - start);
   const perMonth = toSave / goal.months;
-  // With a loan the user saves what they can and borrows the rest.
-  const needed = goal.loan ? Math.min(Math.max(0, capacity), perMonth) : perMonth;
-  const borrowed = goal.loan ? Math.max(0, toSave - needed * goal.months) : 0;
+  // With a loan the user borrows the amount they chose, or else saves what they can and borrows the rest.
+  const chosen = goal.loan?.amount;
+  const borrowed = !goal.loan ? 0
+    : chosen !== undefined ? Math.min(chosen, toSave)
+      : Math.max(0, toSave - Math.min(Math.max(0, capacity), perMonth) * goal.months);
+  const needed = goal.loan ? (toSave - borrowed) / goal.months : perMonth;
+  const payment = goal.loan && borrowed > 0 ? loanPayment(borrowed, goal.loan) : 0;
   const loan = goal.loan && borrowed > 0
-    ? { ...goal.loan, amount: round2(borrowed), payment: round2(loanPayment(borrowed, goal.loan)) }
+    ? { ...goal.loan, amount: round2(borrowed), payment: round2(payment), totalInterest: round2(round2(payment) * goal.loan.years * 12 - borrowed) }
     : undefined;
   const afterMonthly = round2(goal.running.reduce((s, c) => s + c.monthly, 0) + (loan?.payment ?? 0));
   const figures = {
@@ -127,6 +144,7 @@ function scenario(id: string, label: string, goal: GoalDraft, { capacity, start,
 }
 
 export interface Simulation {
+  fixes: GapFix[];               // ways to close the monthly gap, when there is one
   scenarios: GoalScenario[];     // the user's plan first, then alternatives to compare
   start: number;             // savings that can go into the goal
   cushion: number;           // savings left untouched
@@ -146,7 +164,42 @@ export function simulate(goal: GoalDraft, { cashflow, savings, asOf }: { cashflo
     const months = Math.min(LIMITS.months, Math.ceil((goal.price - start) / capacity));
     if (months > goal.months) scenarios.push(scenario('wait', `Wait ${months - goal.months} more months`, { ...goal, months }, { capacity, start, asOf }));
   }
-  return { scenarios, start, cushion, capacity };
+  return { scenarios, start, cushion, capacity, fixes: plan.feasible ? [] : gapFixes(goal, plan, { cashflow, start, capacity, asOf }) };
+}
+
+const MAX_CUT_FIX_PCT = 50;       // asking for more than half of everyday spending is not a real suggestion
+const MIN_PRICE_FIX_SHARE = 0.3;  // a price far below the goal is a different goal
+const MAX_FIXES = 4;
+
+/** Concrete ways to close the monthly gap. Each carries the what-if that applies it. */
+function gapFixes(goal: GoalDraft, plan: GoalScenario, { cashflow, start, capacity, asOf }: Basis & { cashflow: Cashflow }): GapFix[] {
+  const fixes: GapFix[] = [];
+  if (capacity > 0) {
+    const months = Math.min(LIMITS.months, Math.ceil((goal.price - start) / capacity));
+    if (months > goal.months) {
+      fixes.push({ id: 'wait', label: `Wait until ${longDate(addMonths(asOf, months))}`, args: { months },
+        detail: `Save ${eur((goal.price - start) / months)} a month for ${months} months. Nothing else changes.` });
+    }
+  }
+  const everyday = basketMonthly(cashflow, 'everyday');
+  if (!goal.cuts.length && plan.gap > 0 && everyday > 0) {
+    const pct = Math.ceil((plan.gap / everyday) * 20) * 5;
+    if (pct <= MAX_CUT_FIX_PCT) {
+      fixes.push({ id: 'cut', label: `Spend ${pct}% less on everyday things`, args: { cut_group: 'everyday', cut_pct: pct },
+        detail: `That frees about ${eur((everyday * pct) / 100)} of the ${eur(everyday)} you spend each month. Afterwards you choose what to cut.` });
+    }
+  }
+  const fits = Math.floor((start + capacity * goal.months) / 100) * 100;
+  if (capacity > 0 && fits >= goal.price * MIN_PRICE_FIX_SHARE && fits < goal.price) {
+    fixes.push({ id: 'price', label: `Aim for about ${eur(fits)}`, args: { price: fits },
+      detail: `That is what ${eur(capacity)} a month saves in ${goal.months} months.` });
+  }
+  const loan = goal.loan ? null : scenario('loan', 'loan', { ...goal, loan: nextLoan(goal, {}) }, { capacity, start, asOf }).loan;
+  if (loan) {
+    fixes.push({ id: 'loan', label: 'Borrow part of it', args: { loan: true },
+      detail: `About ${eur(loan.amount)} over ${loan.years} years: ${eur(loan.payment)} a month and ${eur(loan.totalInterest)} in interest.` });
+  }
+  return fixes.slice(0, MAX_FIXES);
 }
 
 /**

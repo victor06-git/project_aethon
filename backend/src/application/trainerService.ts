@@ -4,7 +4,7 @@
 // The API is stateless: the client sends the trainer state and gets the new state back.
 import { httpError, type Answer, type ChatTurn } from '../domain/types';
 import { parseState } from '../domain/trainerState';
-import { BASKETS, TRAINER_DISCLAIMER, eur, type Cashflow, type Source, type TrainerReply, type TrainerState } from '../domain/trainer';
+import { BASKETS, TRAINER_DISCLAIMER, eur, type Cashflow, type Source, type TraceStep, type TrainerReply, type TrainerState } from '../domain/trainer';
 import { ungroundedFigures } from './grounding';
 import { ruleCall } from './trainerRules';
 import { allLines, type ToolOutcome, type TrainerTools } from './trainerTools';
@@ -15,6 +15,42 @@ const MAX_TURNS = 12;               // what the model sees of the conversation
 const MAX_QUESTION = 500;
 const MAX_REPLY = 2000;
 const MAX_STEPS = 6;
+const DETAIL_CHARS = 160;
+
+/** Progress events while a request runs. The HTTP layer can stream them to the browser. */
+export type Emit = (event: { type: 'step'; step: TraceStep }) => void;
+
+// What each tool is called in the trace: while it runs, and when it is done.
+const TOOL_STEP: Record<string, { doing: string; done: string }> = {
+  get_safe_to_spend: { doing: 'Working out what is safe to spend', done: 'Worked out what is safe to spend' },
+  get_baskets: { doing: 'Sorting your payments into three baskets', done: 'Sorted your payments into three baskets' },
+  query_spending: { doing: 'Looking through your payments', done: 'Looked through your payments' },
+  get_spending_profile: { doing: 'Looking at how you spend', done: 'Looked at how you spend' },
+  reclassify: { doing: 'Moving that payment and recalculating', done: 'Moved the payment and recalculated' },
+  simulate_goal: { doing: 'Writing up the brief', done: 'Wrote up the brief for you to confirm' },
+  confirm_brief: { doing: 'Running the numbers', done: 'Ran the numbers' },
+  what_if: { doing: 'Recalculating with your change', done: 'Recalculated with your change' },
+  research_goal: { doing: 'Researching on the web with Exa', done: 'Researched on the web with Exa' },
+  choose_option: { doing: 'Using the option you picked', done: 'Used the option you picked' },
+  search_web: { doing: 'Searching the web with Exa', done: 'Searched the web with Exa' },
+  apply_benchmark: { doing: 'Checking the source before using its figure', done: 'Checked the source and used its figure' },
+  agree_plan: { doing: 'Setting up your plan', done: 'Set up your plan' },
+  set_monitoring: { doing: 'Saving what to keep an eye on', done: 'Saved what to keep an eye on' },
+  set_recheck_permission: { doing: 'Saving what to keep an eye on', done: 'Saved what to keep an eye on' },
+  recheck_plan: { doing: 'Re-checking your plan', done: 'Re-checked your plan' },
+  choose_path: { doing: 'Updating your plan', done: 'Updated your plan' },
+  get_plan: { doing: 'Opening your plan', done: 'Opened your plan' },
+  ask_coach: { doing: 'Looking up the scenario', done: 'Looked up the scenario' },
+  set_multibank: { doing: 'Switching accounts', done: 'Switched accounts' }
+};
+
+/** The first sentence of the first line of an answer, without Markdown, for the trace. */
+function firstSentence(text: string): string {
+  const plain = text.split('\n')[0].replace(/\*\*/g, '').replace(/\s+/g, ' ').trim();
+  const end = plain.search(/[.!?](\s|$)/);
+  const sentence = end > 0 ? plain.slice(0, end + 1) : plain;
+  return sentence.length > DETAIL_CHARS ? `${sentence.slice(0, DETAIL_CHARS)}…` : sentence;
+}
 
 export const STARTERS = [
   'What can I safely spend this week?', 'Where did my money go?', 'Could I buy a car next year?', 'What kind of spender am I?'
@@ -87,17 +123,39 @@ const clarify = (): Answer => ({
 
 export function createTrainerService({ tools, rules, agent = null, source, log = () => {} }: Deps) {
   /** One request: tools change the state and collect cards; the last word is text. */
-  function conversation(initial: TrainerState, turns: ChatTurn[]) {
+  function conversation(initial: TrainerState, turns: ChatTurn[], emit?: Emit) {
     let state = initial;
     let sources: Source[] = [];
     const outcomes: ToolOutcome[] = [];
+    const steps: TraceStep[] = [];
+    let toolCount = 0;
+
+    /** Adds a step, or replaces the one with the same id, and tells whoever is listening. */
+    function note(step: TraceStep) {
+      const at = steps.findIndex((s) => s.id === step.id);
+      if (at >= 0) steps[at] = step; else steps.push(step);
+      emit?.({ type: 'step', step });
+    }
 
     async function execute(call: ToolCall): Promise<ToolOutcome> {
-      const outcome = await tools.run(call, { state, sources });
-      state = outcome.state;
-      sources = [...sources, ...(outcome.sources ?? [])];
-      outcomes.push(outcome);
-      return outcome;
+      const label = TOOL_STEP[call.name] ?? { doing: call.name, done: call.name };
+      const id = `tool-${++toolCount}`;
+      const started = Date.now();
+      note({ id, kind: 'tool', title: label.doing, status: 'running' });
+      try {
+        const outcome = await tools.run(call, { state, sources });
+        state = outcome.state;
+        sources = [...sources, ...(outcome.sources ?? [])];
+        outcomes.push(outcome);
+        note({
+          id, kind: 'tool', title: label.done, status: 'done', ms: Date.now() - started, detail: firstSentence(outcome.answer.text),
+          ...(outcome.activity?.length ? { items: outcome.activity } : {}), ...(outcome.sources?.length ? { sources: outcome.sources } : {})
+        });
+        return outcome;
+      } catch (err) {
+        note({ id, kind: 'tool', title: label.doing, status: 'failed', ms: Date.now() - started, detail: message(err) });
+        throw err;
+      }
     }
 
     /** What the model sees of a tool call. Bad arguments come back as an error it can fix. */
@@ -121,12 +179,12 @@ export function createTrainerService({ tools, rules, agent = null, source, log =
       const useModel = modelText !== null && !invented.length;
       const answer: Answer = {
         ...cards, text: useModel ? modelText : computed, source: useModel ? 'model' : 'rules',
-        ...(sources.length ? { sources } : {})
+        ...(sources.length ? { sources } : {}), trace: [...steps]
       };
       return { answer, state };
     }
 
-    return { execute, executeForModel, reply, ran: () => outcomes.length > 0, state: () => state };
+    return { execute, executeForModel, reply, note, steps: () => [...steps], ran: () => outcomes.length > 0, state: () => state };
   }
 
   async function byRules(talk: ReturnType<typeof conversation>, question: string): Promise<TrainerReply> {
@@ -136,7 +194,8 @@ export function createTrainerService({ tools, rules, agent = null, source, log =
       lines: allLines(cashflow), goal: state.draft ?? state.plan?.goal ?? null, hasPlan: state.plan !== null,
       pendingBrief: state.draft !== null && !state.draft.confirmed, year: cashflow.asOf.slice(0, 4)
     }, rules);
-    if (!call) return { answer: clarify(), state };
+    if (!call) return { answer: { ...clarify(), trace: talk.steps() }, state };
+    talk.note({ id: 'rules', kind: 'rules', title: 'Understood your question with built-in rules', detail: (TOOL_STEP[call.name] ?? { done: call.name }).done, status: 'done' });
     await talk.execute(call);
     return talk.reply(null);
   }
@@ -149,33 +208,37 @@ export function createTrainerService({ tools, rules, agent = null, source, log =
     },
 
     /** The conversation. Body: { messages: [{ role, text }], state }. */
-    async chat(body: unknown): Promise<TrainerReply> {
+    async chat(body: unknown, emit?: Emit): Promise<TrainerReply> {
       if (!isObject(body)) throw httpError(400, 'Request body must be an object');
       const turns = parseTurns(body.messages);
-      const talk = conversation(parseState(body.state), turns);
+      const talk = conversation(parseState(body.state), turns, emit);
       const question = turns[turns.length - 1].text;
       if (!agent) return byRules(talk, question);
+      const started = Date.now();
+      talk.note({ id: 'model', kind: 'model', title: 'Gemini is reading your question', status: 'running' });
       try {
         const context = tools.context(talk.state());
         const text = await agent.run({ system: systemPrompt(context.cashflow, talk.state()), turns, tools: tools.specs, execute: talk.executeForModel, maxSteps: MAX_STEPS });
+        talk.note({ id: 'model', kind: 'model', title: 'Gemini wrote the answer in plain words', status: 'done', ms: Date.now() - started });
         if (talk.ran()) return talk.reply(text);
         // No tool was called: fine for explaining a concept, not for figures about the user.
         const invented = ungroundedFigures(text, turns.map((t) => t.text));
-        if (!invented.length) return { answer: { type: 'chat', text, source: 'model' }, state: talk.state() };
+        if (!invented.length) return { answer: { type: 'chat', text, source: 'model', trace: talk.steps() }, state: talk.state() };
         log(`model answered with figures but no tool (${invented.join(', ')}): using the rules`);
       } catch (err) {
         log(`agent failed, using the rules: ${message(err)}`);
+        talk.note({ id: 'model', kind: 'model', title: 'Gemini did not answer: using built-in rules instead', status: 'failed', ms: Date.now() - started, detail: message(err).slice(0, DETAIL_CHARS) });
         if (talk.ran()) return talk.reply(null);
       }
       return byRules(talk, question);
     },
 
     /** One tool, called directly by a button, a toggle or a slider. Body: { action: { name, args }, state }. */
-    async action(body: unknown): Promise<TrainerReply> {
+    async action(body: unknown, emit?: Emit): Promise<TrainerReply> {
       if (!isObject(body) || !isObject(body.action) || typeof body.action.name !== 'string') throw httpError(400, 'action must have a name');
       const args = body.action.args === undefined ? {} : body.action.args;
       if (!isObject(args)) throw httpError(400, 'action.args must be an object');
-      const talk = conversation(parseState(body.state), []);
+      const talk = conversation(parseState(body.state), [], emit);
       await talk.execute({ name: body.action.name, args });
       return talk.reply(null);
     },

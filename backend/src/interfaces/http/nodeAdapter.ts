@@ -4,6 +4,7 @@ import type http from 'node:http';
 import type { Container } from '../../container';
 
 const MAX_BODY_BYTES = 200_000;   // a chat request carries the conversation and the trainer state
+const NDJSON = 'application/x-ndjson';
 
 type Log = (msg: string) => void;
 
@@ -58,8 +59,22 @@ export async function handleApi(app: Container, req: http.IncomingMessage, res: 
   }
   let body: unknown;
   try { body = raw ? JSON.parse(raw) : undefined; } catch { return json(400, { message: 'Bad JSON' }); }
+  const query = Object.fromEntries(url.searchParams);
+  // A client that sends Accept: application/x-ndjson gets progress events as they happen, then the result.
+  if ((req.headers.accept ?? '').includes(NDJSON)) {
+    res.writeHead(200, { 'Content-Type': `${NDJSON}; charset=utf-8`, 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no', ...cors });
+    const send = (event: unknown) => { res.write(`${JSON.stringify(event)}\n`); };
+    try {
+      const result = await app.handle(req.method ?? 'GET', url.pathname, body, query, send);
+      res.end(`${JSON.stringify({ type: 'done', result })}\n`);
+    } catch (err: any) {
+      if (!err?.status) log(err?.stack ?? String(err));
+      res.end(`${JSON.stringify({ type: 'error', status: err?.status ?? 500, message: err?.status ? err.message : 'Internal error' })}\n`);
+    }
+    return;
+  }
   try {
-    json(200, await app.handle(req.method ?? 'GET', url.pathname, body, Object.fromEntries(url.searchParams)));
+    json(200, await app.handle(req.method ?? 'GET', url.pathname, body, query));
   } catch (err: any) {
     if (!err?.status) log(err?.stack ?? String(err));
     json(err?.status ?? 500, { message: err?.status ? err.message : 'Internal error' });

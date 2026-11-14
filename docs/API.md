@@ -19,8 +19,16 @@ request and stores the `state` that comes back. The server validates it every ti
 `answer` is the coach answer below plus optional cards: `steps` (math), `baskets`, `review` (assumptions to
 confirm), `goal` (with `options` found on the web and `benchmarks` with their source), `scenarios` (comparison,
 each with `upfront`), `sources` (web citations), `plan`, `choices` (after a change), `nextStep`, `followUps`.
-`type` is also `cashflow | brief | scenario | plan | research | chat`. A goal starts as a `brief` and is simulated
+`fixes` (ways to close a monthly gap, each with the what-if `args` that applies it) and `trace` (what the trainer did:
+steps with title, status, timing, the Exa queries it asked and the sources it read). `type` is also `cashflow | brief | scenario | plan | research | chat`. A goal starts as a `brief` and is simulated
 only after `confirm_brief`. `source` is `model` when Gemini wrote the text, `rules` otherwise.
+
+**Live steps.** Send `Accept: application/x-ndjson` to `/api/trainer/chat` or `/action` and the response is a stream of
+lines: `{"type":"step","step":{…}}` as each step starts and finishes, then `{"type":"done","result":{answer,state}}`, or
+`{"type":"error","status","message"}`. Without that header the answer is plain JSON, with the same `trace` inside.
+
+Cuts (`what_if`: `cut_group`, `cut_pct`) take `everyday`, a group (`dining`, `taxi`, …) or any everyday category of the
+user's own data (`Restaurants`); `cut_pct` 0 removes a cut. Loans take `loan`, `loan_amount`, `loan_years`, `loan_rate_pct`.
 
 Tools (the `name` of an action, and what Gemini calls): `get_safe_to_spend`, `get_baskets`, `query_spending`,
 `get_spending_profile`, `reclassify`, `simulate_goal`, `confirm_brief`, `what_if`, `research_goal`, `choose_option`,

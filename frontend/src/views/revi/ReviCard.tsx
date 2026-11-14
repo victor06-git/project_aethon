@@ -37,6 +37,7 @@ export function ReviCard() {
   const plan = model.trainer.plan;
   return (
     <div className="k-card">
+      <button type="button" className="k-aa" aria-pressed={model.large} onClick={() => model.toggleLarge()} title="Larger text">Aa</button>
       <button type="button" className="k-card-main" onClick={nav.openAssistant}>
         <span className="k-card-label"><Icon name="revi" size={18} /> Revi · your economic trainer</span>
         <span className="k-card-text">Safe to spend this week <b>{money(flow.safe.week, 0)}</b></span>

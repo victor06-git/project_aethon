@@ -1,8 +1,9 @@
 // Cards the trainer answers with, used in the chat and on the trainer screens: the
 // safe-to-spend math, the three-baskets pill bar, tap-to-correct assumptions, scenario
 // comparison, what a goal costs, web sources and the agreed plan.
+import { useState } from 'react';
 import type {
-  AgreedPlan, BasketTotal, CashLine, FigureSource, GoalDraft, GoalScenario, MathStep, NextStep, PlanChoice, PlanStatus, Source
+  AgreedPlan, BasketTotal, CashLine, FigureSource, GapFix, GoalDraft, GoalScenario, MathStep, NextStep, PlanStatus, Source, TraceStep
 } from '../../../../backend/src/domain/trainer';
 import { useModel } from '../../models/hooks';
 import { money, shortDate } from '../format';
@@ -133,13 +134,90 @@ export function NextStepCard({ step, onGo }: { step: NextStep; onGo: (step: Next
 }
 
 // The user's choices after something changed. The trainer explains; the user decides.
-export function Choices({ choices, busy, onPick }: { choices: PlanChoice[]; busy: boolean; onPick: (choice: PlanChoice) => void }) {
+export function Choices<T extends { id: string; label: string; detail: string }>({ choices, busy, onPick }: { choices: T[]; busy: boolean; onPick: (choice: T) => void }) {
   return (
     <div className="t-choices">
       {choices.map((c) => (
         <button key={c.id} type="button" disabled={busy} onClick={() => onPick(c)}><b>{c.label}</b><span>{c.detail}</span></button>
       ))}
     </div>
+  );
+}
+
+// Ways to close a monthly gap. Each applies a change and shows the result.
+export function Fixes({ fixes, busy, onPick }: { fixes: GapFix[]; busy: boolean; onPick: (fix: GapFix) => void }) {
+  return <Choices choices={fixes} busy={busy} onPick={onPick} />;
+}
+
+// The brief the user confirms. Budget and time are edited here, no typing a sentence needed.
+const MONTHS_STEP = 1;
+export function BriefCard({ goal, busy, onChange, onConfirm }: {
+  goal: GoalDraft; busy: boolean; onChange: (change: { price?: number; months: number }, said: string) => void; onConfirm: () => void;
+}) {
+  const [price, setPrice] = useState(goal.price > 0 ? String(goal.price) : '');
+  const [months, setMonths] = useState(goal.months);
+  const budget = Number(price);
+  const dirty = (budget > 0 && budget !== goal.price) || months !== goal.months;
+  return (
+    <div className="t-brief">
+      <label>Budget (€)
+        <input type="number" inputMode="numeric" min={0} step={100} value={price} placeholder="for example 3000" disabled={busy} onChange={(e) => setPrice(e.target.value)} />
+      </label>
+      <div className="t-stepper">
+        <span>In how many months?</span>
+        <div>
+          <button type="button" aria-label="One month less" disabled={busy || months <= 1} onClick={() => setMonths(months - MONTHS_STEP)}>−</button>
+          <b>{months}</b>
+          <button type="button" aria-label="One month more" disabled={busy} onClick={() => setMonths(months + MONTHS_STEP)}>+</button>
+        </div>
+      </div>
+      {dirty
+        ? <button type="button" className="t-primary" disabled={busy || !(budget > 0)} onClick={() => onChange({ ...(budget > 0 ? { price: budget } : {}), months }, `${budget > 0 ? `Budget ${money(budget, 0)}, ` : ''}${months} months`)}>Update the brief</button>
+        : <button type="button" className="t-primary" disabled={busy || goal.price <= 0} onClick={onConfirm}>Yes, that is right</button>}
+    </div>
+  );
+}
+
+const seconds = (ms: number) => `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)} s`;
+
+function TraceItem({ step }: { step: TraceStep }) {
+  const row = (
+    <>
+      <i className={`t-mark ${step.status}`} aria-hidden="true" />
+      <span className="t-step-title">{step.title}</span>
+      {step.ms !== undefined && <em>{seconds(step.ms)}</em>}
+    </>
+  );
+  const more = step.detail || step.items?.length || step.sources?.length;
+  if (!more) return <li className={`t-step ${step.status}`}><div className="t-step-row">{row}</div></li>;
+  return (
+    <li className={`t-step ${step.status}`}>
+      <details open={step.status !== 'running' && !!step.sources?.length}>
+        <summary className="t-step-row">{row}</summary>
+        {step.detail && <p>{step.detail}</p>}
+        {step.items && <ul>{step.items.map((item) => <li key={item}>{item}</li>)}</ul>}
+        {step.sources && step.sources.length > 0 && (
+          <div className="t-step-sources">
+            {step.sources.map((s) => <a key={s.url} href={s.url} target="_blank" rel="noopener noreferrer">{s.title || host(s.url)} <span>{host(s.url)}</span></a>)}
+          </div>
+        )}
+      </details>
+    </li>
+  );
+}
+
+// What the trainer did, step by step: live while it works, a one-line summary you can open afterwards.
+export function TraceView({ steps, live = false }: { steps: TraceStep[]; live?: boolean }) {
+  if (!steps.length && !live) return null;
+  const list = <ol className="t-trace-list">{steps.map((s) => <TraceItem key={s.id} step={s} />)}</ol>;
+  if (live) return <div className="t-trace live"><div className="t-trace-head"><span className="t-dots"><i /><i /><i /></span>Working on it…</div>{list}</div>;
+  const total = steps.reduce((sum, s) => sum + (s.ms ?? 0), 0);
+  const searched = steps.reduce((n, s) => n + (s.sources?.length ?? 0), 0);
+  return (
+    <details className="t-trace">
+      <summary>How I got this · {steps.length} step{steps.length === 1 ? '' : 's'}{searched ? ` · ${searched} web sources` : ''}{total ? ` · ${seconds(total)}` : ''}</summary>
+      {list}
+    </details>
   );
 }
 

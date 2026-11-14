@@ -20,7 +20,7 @@ import type { CoachService } from './coachService';
 import type { ExternalAccounts, ResearchProvider, ToolCall, ToolSpec, TransactionRepository } from './ports';
 
 export interface Session { state: TrainerState; sources: Source[] }          // sources found during this request
-export interface ToolOutcome { answer: Answer; state: TrainerState; sources?: Source[] }
+export interface ToolOutcome { answer: Answer; state: TrainerState; sources?: Source[]; activity?: string[] }   // activity: what the tool did, for the trace
 export interface TrainerContext { cashflow: Cashflow; transactions: Transaction[]; savings: number; asOf: string }
 
 interface Deps { transactions: TransactionRepository; external: ExternalAccounts; coach: CoachService; research: ResearchProvider | null; log?: (msg: string) => void }
@@ -140,8 +140,8 @@ function goalAnswer(goal: GoalDraft, ctx: TrainerContext, intro = ''): Answer {
   const assumptions = goal.running.some((c) => c.source === 'assumption') ? ' Running costs are typical figures until we look them up.' : '';
   return {
     type: 'scenario', text: `${intro}${text}${upfront}${cushion}${assumptions}`, goal, scenarios: sim.scenarios,
-    nextStep: nextStepFor(sim.scenarios, ctx),
-    followUps: plan.feasible ? ['Agree this plan', 'Look up real prices'] : [...WHAT_IF_CHIPS.filter((c) => !(goal.loan && /loan/.test(c))), 'Look up real prices']
+    nextStep: nextStepFor(sim.scenarios, ctx), ...(sim.fixes.length ? { fixes: sim.fixes } : {}),
+    followUps: plan.feasible ? ['Agree this plan', 'Research with Exa'] : ['Research with Exa']
   };
 }
 
@@ -192,23 +192,35 @@ const NO_PLAN = () => chat('There is no agreed plan yet. Explore a goal first, t
 // ---- Tool handlers ----
 
 function whatIfFrom(args: Args): WhatIf {
-  const cutGroup = optEnum(args, 'cut_group', Object.keys(CUT_GROUPS));
+  const cutGroup = optString(args, 'cut_group', 60);
   const cutPct = optNumber(args, 'cut_pct', 0, 100);
   const loan = optBool(args, 'loan');
   const years = optNumber(args, 'loan_years', 1, LIMITS.loanYears);
   const ratePct = optNumber(args, 'loan_rate_pct', 0, LIMITS.ratePct);
+  const amount = optNumber(args, 'loan_amount', 0, LIMITS.price);
   const costId = optEnum(args, 'cost_id', RUNNING_COST_IDS);
   const costMonthly = optNumber(args, 'cost_monthly', 0, LIMITS.monthly);
-  const wantsLoan = loan === true || (loan === undefined && (years !== undefined || ratePct !== undefined));
+  const wantsLoan = loan === true || (loan === undefined && (years !== undefined || ratePct !== undefined || amount !== undefined));
   return {
     months: optNumber(args, 'months', 1, LIMITS.months),
     addMonths: optNumber(args, 'add_months', -LIMITS.months, LIMITS.months),
     price: optNumber(args, 'price', 1, LIMITS.price),
     keepSpending: optBool(args, 'keep_spending'),
     cut: cutGroup || cutPct !== undefined ? { group: cutGroup ?? 'everyday', pct: cutPct ?? DEFAULT_CUT_PCT } : undefined,
-    loan: loan === false ? false : wantsLoan ? { ...(years !== undefined ? { years } : {}), ...(ratePct !== undefined ? { ratePct } : {}) } : undefined,
+    loan: loan === false ? false : wantsLoan ? { ...(years !== undefined ? { years } : {}), ...(ratePct !== undefined ? { ratePct } : {}), ...(amount !== undefined ? { amount } : {}) } : undefined,
     cost: costId && costMonthly !== undefined ? { id: costId, monthly: costMonthly } : undefined
   };
+}
+
+/** A cut may name 'everyday', a group, or any everyday category of the user's own data. Returns the name to store. */
+function cutTarget(group: string, cashflow: Cashflow): string {
+  const name = group.trim().toLowerCase();
+  if (name === 'everyday' || CUT_GROUPS[name]) return name;
+  const lines = cashflow.baskets.find((b) => b.basket === 'everyday')?.lines ?? [];
+  const hit = lines.find((l) => l.category.toLowerCase() === name || l.label.toLowerCase() === name);
+  if (hit) return hit.category;
+  const known = [...new Set(lines.map((l) => l.category))];
+  throw bad(`Unknown spending category "${group}". Choose from: ${known.join(', ')}, or everyday`);
 }
 
 function checkPlan(plan: AgreedPlan, ctx: TrainerContext, outside: string[] = []): { plan: AgreedPlan; answer: Answer } {
@@ -290,7 +302,8 @@ export function createTrainerTools({ transactions, external, coach, research, lo
       const text = `Done: **${line.label}** (${eur(line.lastAmount)}) now counts as ${BASKET_NAME[as]}, not ${BASKET_NAME[line.basket]}. `
         + `Safe to spend this week: ${eur(ctx.cashflow.safe.week)} → **${eur(after.safe.week)}**. `
         + `Left each month: ${eur(ctx.cashflow.free)} → **${eur(after.free)}**.`;
-      return { answer: { type: 'cashflow', text, figure: eur(after.safe.week), steps: after.safe.steps, baskets: after.baskets }, state: next };
+      return { answer: { type: 'cashflow', text, figure: eur(after.safe.week), steps: after.safe.steps, baskets: after.baskets }, state: next,
+        activity: [`${line.label}: ${BASKET_NAME[line.basket]} → ${BASKET_NAME[as]}`, `Safe to spend: ${eur(ctx.cashflow.safe.week)} → ${eur(after.safe.week)}`] };
     },
 
     simulate_goal: (args, { state }, ctx) => {
@@ -309,11 +322,12 @@ export function createTrainerTools({ transactions, external, coach, research, lo
 
     what_if: (args, { state }, ctx) => {
       const change = whatIfFrom(args);
+      if (change.cut) change.cut = { ...change.cut, group: cutTarget(change.cut.group, ctx.cashflow) };
       const base = state.draft ?? state.plan?.goal;
       if (!base) {
         if (!change.cut || change.cut.pct <= 0) return { answer: NO_GOAL(), state };
         const gain = cutGain([change.cut], ctx.cashflow);
-        const text = `Cutting ${CUT_GROUPS[change.cut.group].label} by ${change.cut.pct}% would free about **${eur(gain)} a month**, ${eur(gain * 12)} a year.`;
+        const text = `Cutting ${CUT_GROUPS[change.cut.group]?.label ?? change.cut.group.toLowerCase()} by ${change.cut.pct}% would free about **${eur(gain)} a month**, ${eur(gain * 12)} a year.`;
         return { answer: { type: 'cashflow', text, figure: `${eur(gain)} a month`, followUps: ['Could I buy a car next year?'] }, state };
       }
       const draft = applyWhatIf(base, change);
@@ -328,7 +342,7 @@ export function createTrainerTools({ transactions, external, coach, research, lo
       const text = sources.length
         ? `I found ${sources.length} source${sources.length === 1 ? '' : 's'} for "${query}": ${[...new Set(sources.map((s) => host(s.url)))].join(', ')}.`
         : `I found nothing reliable for "${query}".`;
-      return { answer: { type: 'research', text, sources }, state, sources };
+      return { answer: { type: 'research', text, sources }, state, sources, activity: [`Asked Exa: ${query}`] };
     },
 
     research_goal: async (_, { state }, ctx) => {
@@ -345,7 +359,7 @@ export function createTrainerTools({ transactions, external, coach, research, lo
       const text = r.sources.length
         ? `I researched this on the web with Exa (${r.sources.length} sources):\n${lines.join('\n')}`
         : 'I searched the web with Exa but found nothing reliable for this goal. The plan still uses my assumptions.';
-      return { answer: { ...showGoal(r.goal, ctx), type: 'research', text, sources: r.sources }, state: next, sources: r.sources };
+      return { answer: { ...showGoal(r.goal, ctx), type: 'research', text, sources: r.sources }, state: next, sources: r.sources, activity: r.queries.map((q) => `Asked Exa: ${q}`) };
     },
 
     choose_option: (args, { state }, ctx) => {
@@ -448,7 +462,7 @@ export function createTrainerTools({ transactions, external, coach, research, lo
       const watch = research ? await watchGoal(state.plan.goal, state.plan.monitor, ctx.asOf.slice(0, 4), research, log) : null;
       const { plan, answer } = checkPlan(state.plan, ctx, watch?.changes);
       const followUps = [...(watch?.followUps ?? []), ...(answer.followUps ?? [])];
-      return { answer: { ...answer, followUps, ...(watch?.sources.length ? { sources: watch.sources } : {}) }, state: { ...state, plan }, sources: watch?.sources };
+      return { answer: { ...answer, followUps, ...(watch?.sources.length ? { sources: watch.sources } : {}) }, state: { ...state, plan }, sources: watch?.sources, activity: watch?.queries.map((q) => `Asked Exa: ${q}`) };
     },
 
     get_plan: (_, { state }, ctx) => {
@@ -519,10 +533,11 @@ export const TOOL_SPECS: ToolSpec[] = [
     add_months: num('Wait this many more months (negative = sooner).'),
     months: num('Set the months until the purchase.'),
     price: num('A different price in euros.'),
-    cut_group: choice(Object.keys(CUT_GROUPS), 'Everyday spending to cut. dining = eating out and food delivery.'),
+    cut_group: text("What to cut: a category from the user's everyday spending exactly as listed in the system prompt (e.g. 'Restaurants'), a group (dining, groceries, taxi, leisure, transport, shopping) or 'everyday' for all of it."),
     cut_pct: num('Percent to cut, default 20. 0 removes the cut.'),
     keep_spending: bool('true = drop all cuts and keep current everyday spending.'),
     loan: bool('true = finance what is missing with a loan, false = no loan.'),
+    loan_amount: num('How much to borrow, in euros. Leave out to borrow only what saving cannot cover.'),
     loan_years: num('Loan length in years.'),
     loan_rate_pct: num('Yearly interest rate in percent.'),
     cost_id: choice(RUNNING_COST_IDS, 'A running cost the user corrects.'),

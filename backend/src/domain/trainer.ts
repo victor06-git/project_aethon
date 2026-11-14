@@ -47,8 +47,10 @@ export type FigureSource = 'assumption' | 'research' | 'user';
 export type BenchmarkUnit = 'eur' | 'eur_per_month' | 'eur_per_year' | 'percent';
 
 export interface CostItem { id: string; label: string; monthly: number; source: FigureSource; url?: string }
-export interface SpendingCut { group: string; pct: number }      // group: a key of CUT_GROUPS
-export interface LoanTerms { years: number; ratePct: number }
+/** `group` is 'everyday' (all of it), a key of CUT_GROUPS, or a spending category from the user's own data. */
+export interface SpendingCut { group: string; pct: number }
+/** A loan option. `amount` is how much to borrow; when unset it is whatever saving alone cannot cover. */
+export interface LoanTerms { years: number; ratePct: number; amount?: number; rateSource?: FigureSource; rateUrl?: string }
 export interface Source { title: string; url: string; published: string; snippet: string }
 
 /** What the web says about one cost. `value` is set only when a quoted figure was verified in a source. */
@@ -99,7 +101,7 @@ export interface GoalScenario {
   afterMonthly: number;        // running costs plus loan payment after the purchase
   afterFree: number;           // what is left each month after the purchase
   feasible: boolean;
-  loan?: LoanTerms & { amount: number; payment: number };
+  loan?: LoanTerms & { amount: number; payment: number; totalInterest: number };
   notes: string[];
 }
 
@@ -130,6 +132,21 @@ export interface PlanChoice {
   monthlySaving: number;
   bufferMonthly: number;
   targetDate: string;
+}
+
+/** A way to close a monthly gap, with the what-if that applies it. */
+export interface GapFix { id: 'wait' | 'cut' | 'price' | 'loan'; label: string; detail: string; args: Record<string, unknown> }
+
+/** One step the trainer took to answer: a tool it ran, the model, or the rules. Shown to the user, expandable. */
+export interface TraceStep {
+  id: string;
+  kind: 'tool' | 'model' | 'rules';
+  title: string;
+  detail?: string;
+  status: 'running' | 'done' | 'failed';
+  ms?: number;
+  items?: string[];          // what was searched or changed
+  sources?: Source[];        // web sources it read
 }
 
 /** Something concrete the user can do now. `ask` sends a chat message, `screen` opens a bank screen. */

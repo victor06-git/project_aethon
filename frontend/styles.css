@@ -397,6 +397,71 @@ a.t-src:hover { text-decoration: underline; }
 .t-choices b { font-size: 13.5px; font-weight: 850; color: var(--deep); }
 .k-msg.bot:has(.t-options, .t-choices, .t-next) { width: 90%; }
 
+/* 15. Activity trace: what the trainer did, step by step (live while working, expandable after) */
+.k-msg.working { width: 90%; }
+.t-trace { width: 100%; margin-top: 4px; font-size: 12px; color: #4a5a50; }
+.t-trace > summary { min-height: 32px; display: flex; align-items: center; padding: 4px 0; cursor: pointer; font-weight: 700; color: var(--muted); list-style: none; }
+.t-trace > summary::-webkit-details-marker { display: none; }
+.t-trace > summary::before { content: "›"; display: inline-block; width: 14px; transition: transform .15s ease; }
+.t-trace[open] > summary::before { transform: rotate(90deg); }
+.t-trace-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 13px; font-weight: 800; color: var(--deep); }
+.t-trace-list { margin: 4px 0 0; padding: 0; list-style: none; border-left: 2px solid #dbe8dd; }
+.t-step { margin: 0 0 2px 8px; padding: 2px 0 2px 10px; }
+.t-step-row { display: flex; align-items: center; gap: 8px; min-height: 28px; font-size: 12.5px; font-weight: 650; color: var(--text); list-style: none; cursor: default; }
+.t-step details > summary { cursor: pointer; list-style: none; }
+.t-step details > summary::-webkit-details-marker { display: none; }
+.t-step-title { flex: 1; min-width: 0; }
+.t-step-row em { font-style: normal; font-size: 11px; font-weight: 700; color: var(--muted); }
+.t-mark { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--green); }
+.t-mark.running { background: none; border: 2px solid #bfe2c9; border-top-color: var(--green); animation: tspin .8s linear infinite; }
+.t-mark.failed { background: #d9534f; }
+.t-step p { margin: 2px 0 4px 18px; font-size: 12px; line-height: 1.4; color: #4a5a50; }
+.t-step ul { margin: 2px 0 4px 18px; padding-left: 14px; font-size: 11.5px; line-height: 1.45; color: #4a5a50; }
+.t-step-sources { display: flex; flex-direction: column; gap: 4px; margin: 4px 0 6px 18px; }
+.t-step-sources a { padding: 6px 9px; font-size: 12px; font-weight: 650; color: var(--text); text-decoration: none; background: #f4f8fb; border: 1px solid #dbe8f3; border-radius: 8px; }
+.t-step-sources a span { display: block; font-size: 11px; font-weight: 700; color: #14508a; }
+.t-dots { display: inline-flex; gap: 3px; }
+.t-dots i { width: 6px; height: 6px; background: #9fc9ad; border-radius: 3px; animation: kdot 1s infinite ease-in-out; }
+.t-dots i:nth-child(2) { animation-delay: .15s; }
+.t-dots i:nth-child(3) { animation-delay: .3s; }
+@keyframes tspin { to { transform: rotate(360deg); } }
+
+/* 16. Brief, spending cuts, loan panel */
+.t-brief { display: flex; flex-direction: column; gap: 12px; width: 100%; padding: 12px; background: #f7faf7; border: 1px solid var(--line); border-radius: 12px; }
+.t-brief label, .t-stepper > span, .t-rate { display: flex; flex-direction: column; gap: 5px; font-size: 13px; font-weight: 700; color: #3c4a40; }
+.t-brief input, .t-rate input { min-height: 46px; padding: 8px 12px; font-size: 17px; color: var(--text); background: #fff; border: 1px solid #cfe0d2; border-radius: 10px; }
+.t-stepper { display: flex; flex-direction: column; gap: 6px; }
+.t-stepper > div { display: flex; align-items: center; gap: 12px; }
+.t-stepper b { min-width: 46px; text-align: center; font-size: 20px; color: var(--deep); }
+.t-stepper button { width: 46px; height: 46px; font-size: 24px; font-weight: 700; color: var(--deep); background: #fff; border: 1px solid #bfe2c9; border-radius: 50%; }
+.t-primary { min-height: 50px; padding: 12px 16px; font-size: 16px; font-weight: 800; color: #fff; background: var(--green); border: 0; border-radius: 14px; }
+.t-primary:disabled { opacity: .5; }
+.t-sub { margin: 4px 0 8px; font-size: 14px; font-weight: 850; color: var(--deep); }
+.t-cuts, .t-loan { display: flex; flex-direction: column; margin-top: 8px; padding-top: 14px; border-top: 1px solid var(--line); }
+.t-loan p, .t-cuts p { margin: 0 0 10px; font-size: 13px; line-height: 1.5; }
+.t-cut { margin-bottom: 8px; padding: 10px 12px 2px; background: #f7faf7; border: 1px solid var(--line); border-radius: 12px; }
+.t-cut-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; font-size: 13px; }
+.t-cut-head span { flex: 1; font-size: 11.5px; color: var(--muted); }
+.t-cut-head button, .t-loan > button { min-height: 38px; padding: 6px 12px; font-size: 13px; font-weight: 750; color: var(--deep); background: #fff; border: 1px solid #bfe2c9; border-radius: 19px; }
+.t-loan > button { align-self: flex-start; margin-top: 4px; }
+.t-add { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
+.t-add button { display: flex; align-items: center; gap: 6px; min-height: 40px; padding: 6px 12px; font-size: 13px; font-weight: 750; color: var(--deep); background: #fff; border: 1px dashed #8fcaa2; border-radius: 20px; }
+.t-add button span { font-size: 11.5px; font-weight: 600; color: var(--muted); }
+.t-add button:disabled, .t-cut-head button:disabled { opacity: .5; }
+.t-freed { padding: 8px 10px; background: #f1faf3; border-radius: 8px; }
+.t-rate { margin-bottom: 6px; }
+.t-loan-result { padding: 10px 12px; background: #f1faf3; border: 1px solid #cfe8d6; border-radius: 10px; }
+.t-loan a { color: #14508a; font-weight: 700; }
+
+/* 17. Larger text (Aa) and touch targets */
+.k-aa { position: absolute; top: 8px; right: 124px; z-index: 3; min-width: 40px; min-height: 36px; padding: 4px 9px; font-size: 13px; font-weight: 850; color: var(--deep); background: #fff; border: 1px solid #bfe2c9; border-radius: 18px; }
+.k-aa[aria-pressed="true"] { color: #fff; background: var(--green); border-color: var(--green); }
+.k-card { position: relative; }
+.k-chips button, .t-review-actions button { min-height: 42px; }
+.phone.large .content, .phone.large .k-msg { zoom: 1.18; }
+.phone.large .k-q { font-size: 14px; }
+.phone.large .k-input input { font-size: 17px; }
+
 /* Embedded (phone width or ?embed): the app is the page. Full-bleed, at most 430px wide. */
 .stage.embed { min-height: 100dvh; padding: 0; gap: 0; }
 .stage.embed .phone { width: 100%; max-width: 430px; height: 100dvh; border: 0; border-radius: 0; box-shadow: none; }

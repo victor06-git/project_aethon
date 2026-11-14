@@ -1,15 +1,15 @@
 // Model: everything one phone knows, and the only code that talks to the API.
 // React components subscribe through the hooks in ./hooks.ts.
-import { request } from '@transport';
+import { request, requestStream } from '@transport';
 import type { Answer, ChatTurn } from '../../../backend/src/domain/types';
-import type { Cashflow, TrainerReply, TrainerState } from '../../../backend/src/domain/trainer';
+import type { Cashflow, TraceStep, TrainerReply, TrainerState } from '../../../backend/src/domain/trainer';
 
 export type Loaded<T> = T | { __error: string } | undefined;
 export const isError = (d: unknown): d is { __error: string } => !!d && typeof d === 'object' && '__error' in d;
 
 export type ChatMessage =
   | { role: 'user'; text: string }
-  | { role: 'bot'; pending: true }
+  | { role: 'bot'; pending: true; steps: TraceStep[] }
   | { role: 'bot'; answer: Answer }
   | { role: 'bot'; error: string; retry: () => void };
 
@@ -30,6 +30,11 @@ function loadTrainer(): TrainerState {
   }
 }
 
+const LARGE_KEY = 'revi-large-text';
+function loadLarge(): boolean {
+  try { return localStorage.getItem(LARGE_KEY) === '1'; } catch { return false; }
+}
+
 function saveTrainer(state: TrainerState) {
   try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch { /* storage may be blocked */ }
 }
@@ -44,6 +49,7 @@ export class PhoneModel {
   chat: ChatMessage[] = [];
   city: CityState = { days: 0, compare: '', anim: null };
   trainer: TrainerState = loadTrainer();
+  large = loadLarge();     // larger text, for people who find the default small
   version = 0;
 
   subscribe = (fn: () => void) => { this.listeners.add(fn); return () => { this.listeners.delete(fn); }; };
@@ -66,6 +72,12 @@ export class PhoneModel {
   // Uncached GET for values that change with the UI (the City timeline).
   fetch<T>(path: string): Promise<T> { return request<T>('GET', path); }
   post<T>(path: string, body: unknown): Promise<T> { return request<T>('POST', path, body); }
+
+  toggleLarge() {
+    this.large = !this.large;
+    try { localStorage.setItem(LARGE_KEY, this.large ? '1' : '0'); } catch { /* storage may be blocked */ }
+    this.emit();
+  }
 
   // ---- Trainer ----
 
@@ -109,12 +121,12 @@ export class PhoneModel {
   /** A question in the user's own words. The answer contract is described in docs/API.md. */
   ask(question: string): Promise<void> {
     const messages: ChatTurn[] = [...this.turns(), { role: 'user', text: question }];
-    return this.exchange(question, () => this.post<TrainerReply>('/api/trainer/chat', { messages, state: this.trainer }), () => { void this.ask(question); });
+    return this.exchange(question, (onStep) => this.stream('/api/trainer/chat', { messages, state: this.trainer }, onStep), () => { void this.ask(question); });
   }
 
   /** A button in the chat: runs one trainer tool and shows what the user "said". */
   act(said: string, name: string, args: Record<string, unknown> = {}): Promise<void> {
-    return this.exchange(said, () => this.runTool(name, args), () => { void this.act(said, name, args); });
+    return this.exchange(said, (onStep) => this.stream('/api/trainer/action', { action: { name, args }, state: this.trainer }, onStep), () => { void this.act(said, name, args); });
   }
 
   /** A control outside the chat (toggle, slider, select): runs one tool and returns its answer. */
@@ -137,13 +149,27 @@ export class PhoneModel {
     return this.post<TrainerReply>('/api/trainer/action', { action: { name, args }, state: this.trainer });
   }
 
-  private async exchange(said: string, send: () => Promise<TrainerReply>, retry: () => void) {
+  // A request whose steps arrive while it runs, so the chat can show what is happening.
+  private stream(path: string, body: unknown, onStep: (step: TraceStep) => void): Promise<TrainerReply> {
+    return requestStream<TrainerReply>('POST', path, body, (event) => onStep(event.step as TraceStep));
+  }
+
+  // Shows a step in the waiting message: a new one is added, a known one is updated (running → done).
+  private showStep(step: TraceStep) {
+    const last = this.chat[this.chat.length - 1];
+    if (!last || !('pending' in last)) return;
+    const steps = last.steps.some((s) => s.id === step.id) ? last.steps.map((s) => (s.id === step.id ? step : s)) : [...last.steps, step];
+    this.chat = [...this.chat.slice(0, -1), { ...last, steps }];
+    this.emit();
+  }
+
+  private async exchange(said: string, send: (onStep: (step: TraceStep) => void) => Promise<TrainerReply>, retry: () => void) {
     if (this.busy) return;
-    this.chat = [...this.chat, { role: 'user', text: said }, { role: 'bot', pending: true }];
+    this.chat = [...this.chat, { role: 'user', text: said }, { role: 'bot', pending: true, steps: [] }];
     this.emit();
     let reply: ChatMessage;
     try {
-      const { answer, state } = await send();
+      const { answer, state } = await send((step) => this.showStep(step));
       this.setTrainer(state);
       reply = { role: 'bot', answer };
     } catch (err) {

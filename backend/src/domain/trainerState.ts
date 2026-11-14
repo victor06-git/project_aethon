@@ -90,13 +90,18 @@ function costItem(v: unknown): CostItem {
 
 function cut(v: unknown): SpendingCut {
   const o = obj(v, 'cut');
-  return { group: oneOf(o.group, 'cut.group', Object.keys(CUT_GROUPS)), pct: num(o.pct, 'cut.pct', 1, 100) };
+  return { group: text(o.group, 'cut.group', MAX.name), pct: num(o.pct, 'cut.pct', 1, 100) };
 }
 
 function loan(v: unknown): LoanTerms | null {
   if (v === null || v === undefined) return null;
   const o = obj(v, 'loan');
-  return { years: num(o.years, 'loan.years', 1, LIMITS.loanYears), ratePct: num(o.ratePct, 'loan.ratePct', 0, LIMITS.ratePct) };
+  return {
+    years: num(o.years, 'loan.years', 1, LIMITS.loanYears), ratePct: num(o.ratePct, 'loan.ratePct', 0, LIMITS.ratePct),
+    ...(o.amount === undefined ? {} : { amount: num(o.amount, 'loan.amount', 0, LIMITS.price) }),
+    ...(o.rateSource === undefined ? {} : { rateSource: oneOf(o.rateSource, 'loan.rateSource', SOURCES) }),
+    ...(o.rateUrl === undefined ? {} : { rateUrl: httpUrl(o.rateUrl, 'loan.rateUrl') })
+  };
 }
 
 function goal(v: unknown): GoalDraft {

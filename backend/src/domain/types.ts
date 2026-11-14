@@ -14,7 +14,7 @@ export interface Transaction {
   merchantId?: string | null;
 }
 
-import type { AgreedPlan, BasketTotal, CashLine, GoalDraft, GoalScenario, MathStep, NextStep, PlanChoice, Source } from './trainer';
+import type { AgreedPlan, BasketTotal, CashLine, GoalDraft, GoalScenario, GapFix, MathStep, NextStep, PlanChoice, Source, TraceStep } from './trainer';
 
 export interface Account {
   id: string;
@@ -81,6 +81,8 @@ export interface Answer {
   plan?: AgreedPlan;
   choices?: PlanChoice[];         // ways to respond when the plan has room or is short
   nextStep?: NextStep;           // a prepared next step
+  fixes?: GapFix[];              // ways to close the monthly gap
+  trace?: TraceStep[];           // what the trainer did to get here
   followUps?: string[];
   figure?: string;
   range?: string;

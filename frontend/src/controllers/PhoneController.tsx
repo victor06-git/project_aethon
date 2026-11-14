@@ -1,6 +1,6 @@
 // Controller: one phone. Owns navigation and assistant state, turns user actions into model
 // calls, and picks the screen to render. Views stay pure; the model holds the data.
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { PhoneModel } from '../models/phoneModel';
 import { ModelContext } from '../models/hooks';
 import { NavContext, type Nav } from './nav';
@@ -15,6 +15,7 @@ type Intro = 'pending' | 'shown' | 'done';
 
 export function PhoneController({ revi, label }: { revi: boolean; label: string }) {
   const model = useMemo(() => new PhoneModel(), []);
+  useSyncExternalStore(model.subscribe, model.snapshot);   // the text-size setting changes the frame's class
   const screens = useMemo(() => screensFor(revi), [revi]);
   const [tab, setTabState] = useState<{ id: string; arg: string | null }>({ id: 'home', arg: null });
   const [stack, setStack] = useState<Step[]>([]);
@@ -60,7 +61,7 @@ export function PhoneController({ revi, label }: { revi: boolean; label: string 
   return (
     <ModelContext.Provider value={model}>
       <NavContext.Provider value={nav}>
-        <section className="phone" aria-label={label}
+        <section className={`phone${model.large ? ' large' : ''}`} aria-label={label}
           onKeyDown={(e) => { if (e.key === 'Escape' && assistant === 'open') nav.closeAssistant(); }}>
           <StatusBar />
           <Header subTitle={stack.length ? (screen?.title ?? '') : null} />

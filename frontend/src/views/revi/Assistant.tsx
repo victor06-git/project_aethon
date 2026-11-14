@@ -12,7 +12,9 @@ import { money } from '../format';
 import { Icon } from '../icons';
 import { AuroraOrb } from './AuroraOrb';
 import { Markdown } from './Markdown';
-import { BasketBar, Choices, GoalCosts, GoalOptions, MathSteps, NextStepCard, PlanCard, ReviewLines, ScenarioCards, Sources } from './TrainerCards';
+import { BasketBar, BriefCard, Choices, Fixes, GoalCosts, GoalOptions, MathSteps, NextStepCard, PlanCard, ReviewLines, ScenarioCards, Sources, TraceView } from './TrainerCards';
+
+const MAX_CHIPS = 3;   // a simple user should never face a wall of buttons
 
 const DEFAULT_STARTERS = ['What can I safely spend this week?', 'Where did my money go?', 'Could I buy a car next year?'];
 
@@ -58,7 +60,18 @@ function AnswerBubble({ a }: { a: Answer }) {
             <span>{money(r.amount, 0)}</span></div>))}
         </div>
       )}
+      {a.type === 'brief' && a.goal && (
+        <BriefCard key={`${a.goal.price}-${a.goal.months}`} goal={a.goal} busy={model.busy}
+          onConfirm={() => { void model.act('Yes, that is right', 'confirm_brief'); }}
+          onChange={(change, said) => { void model.act(said, 'what_if', change); }} />
+      )}
       {a.scenarios && <ScenarioCards scenarios={a.scenarios} />}
+      {a.fixes && a.fixes.length > 0 && (
+        <>
+          <div className="t-sources-title">Ways to close the gap</div>
+          <Fixes fixes={a.fixes} busy={model.busy} onPick={(f) => { void model.act(f.label, 'what_if', f.args); }} />
+        </>
+      )}
       {a.goal && a.goal.options.length > 0 && a.type !== 'plan' && (
         <GoalOptions goal={a.goal} busy={model.busy} onPick={(i) => { void model.act(`Use option ${i + 1}`, 'choose_option', { index: i }); }} />
       )}
@@ -80,10 +93,11 @@ function AnswerBubble({ a }: { a: Answer }) {
       {a.examples && a.examples.length > 0 && (
         <div className="k-suggest">{a.examples.map((x) => <button key={x} type="button" onClick={() => nav.ask(x)}>{x}</button>)}</div>
       )}
-      {a.followUps && a.followUps.length > 0 && (
-        <div className="k-chips">{a.followUps.map((x) => <button key={x} type="button" disabled={model.busy} onClick={() => nav.ask(x)}>{x}</button>)}</div>
+      {a.followUps && a.followUps.length > 0 && a.type !== 'brief' && (
+        <div className="k-chips">{a.followUps.slice(0, MAX_CHIPS).map((x) => <button key={x} type="button" disabled={model.busy} onClick={() => nav.ask(x)}>{x}</button>)}</div>
       )}
       {a.source === 'model' && <div className="k-by">Explained by Gemini. Every figure is computed from your data.</div>}
+      {a.trace && a.trace.length > 0 && <TraceView steps={a.trace} />}
     </div>
   );
 }
@@ -91,7 +105,7 @@ function AnswerBubble({ a }: { a: Answer }) {
 function Message({ m }: { m: ChatMessage }) {
   const model = useModel();
   if (m.role === 'user') return <div className="k-msg user">{m.text}</div>;
-  if ('pending' in m) return <div className="k-msg bot typing" aria-label="Revi is thinking"><i /><i /><i /></div>;
+  if ('pending' in m) return <div className="k-msg bot working" aria-label="Revi is working"><TraceView steps={m.steps} live /></div>;
   if ('error' in m) {
     return (
       <div className="k-msg bot error" role="alert">

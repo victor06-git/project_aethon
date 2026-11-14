@@ -111,6 +111,7 @@ async function ask(topics: Topic[], provider: ResearchProvider, log: (msg: strin
 
 export interface GoalResearch {
   goal: GoalDraft;
+  queries: string[];     // what was asked of the web
   found: string[];       // what was found, one line each, with the source site
   missing: string[];     // what no source stated clearly
   sources: Source[];
@@ -118,7 +119,8 @@ export interface GoalResearch {
 
 /** Researches the goal and returns it with every backed figure applied. The user's own budget is never overwritten. */
 export async function researchGoal(goal: GoalDraft, year: string, provider: ResearchProvider, log: (msg: string) => void = () => {}): Promise<GoalResearch> {
-  const answers = await ask(topicsFor(goal, year), provider, log);
+  const topics = topicsFor(goal, year);
+  const answers = await ask(topics, provider, log);
   const found: string[] = [];
   const missing: string[] = [];
   const benchmarks = new Map(goal.benchmarks.map((b) => [b.topic, b]));
@@ -151,23 +153,23 @@ export async function researchGoal(goal: GoalDraft, year: string, provider: Rese
   const rate = loans ? figure(loans, 'interest_rate_pct', RATE_RANGE) : null;
   if (loans && rate) {
     benchmarks.set('loan_rate', benchmark('loan_rate', 'Loan interest rate', rate, 'percent', loans.sources));
-    if (next.loan) next = { ...next, loan: { ...next.loan, ratePct: rate.value } };
+    if (next.loan) next = { ...next, loan: { ...next.loan, ratePct: rate.value, rateSource: 'research', rateUrl: rate.url } };
     const conditions = typeof loans.content.conditions === 'string' ? ` ${loans.content.conditions.trim().slice(0, CONDITIONS_MAX)}` : '';
     found.push(`Loan interest: about ${rate.value}% a year (${hostOf(rate.url)}).${conditions}`);
   } else if (loans) missing.push('loan interest');
 
   return {
     goal: { ...next, options: options.length ? options : goal.options, benchmarks: [...benchmarks.values()] },
-    found, missing, sources: uniqueSources([...answers.values()])
+    queries: topics.map((t) => t.query), found, missing, sources: uniqueSources([...answers.values()])
   };
 }
 
-export interface Watch { changes: string[]; followUps: string[]; sources: Source[] }
+export interface Watch { changes: string[]; followUps: string[]; sources: Source[]; queries: string[] }
 
 /** What the user asked to have monitored, checked now: has the price or the loan rate moved? */
 export async function watchGoal(goal: GoalDraft, monitor: Monitoring, year: string, provider: ResearchProvider, log: (msg: string) => void = () => {}): Promise<Watch> {
   const wanted = topicsFor(goal, year).filter((t) => (t.id === 'options' && monitor.prices) || (t.id === 'financing' && monitor.conditions && goal.loan !== null));
-  if (!wanted.length) return { changes: [], followUps: [], sources: [] };
+  if (!wanted.length) return { changes: [], followUps: [], sources: [], queries: [] };
   const answers = await ask(wanted, provider, log);
   const changes: string[] = [];
   const followUps: string[] = [];
@@ -184,5 +186,5 @@ export async function watchGoal(goal: GoalDraft, monitor: Monitoring, year: stri
     changes.push(`Loan interest is now about ${rate.value}% (${hostOf(rate.url)}); your plan counts ${goal.loan.ratePct}%.`);
     followUps.push(`What if the loan rate is ${rate.value}%?`);
   }
-  return { changes, followUps, sources: uniqueSources([...answers.values()]) };
+  return { changes, followUps, sources: uniqueSources([...answers.values()]), queries: wanted.map((t) => t.query) };
 }

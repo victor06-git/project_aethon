@@ -212,7 +212,7 @@ test('a big decision: savings path, running costs and what-ifs', async () => {
   r = await say(app, 'What if I keep my current everyday spending?', r.state);
   assert.deepEqual(r.state.draft.cuts, []);
   r = await say(app, 'What if I take a loan?', r.state);
-  assert.deepEqual(r.state.draft.loan, { years: 5, ratePct: 6 });
+  assert.deepEqual(r.state.draft.loan, { years: 5, ratePct: 6, rateSource: 'assumption' });
   const financed = r.answer.scenarios[0];
   assert.ok(financed.loan.amount > 0 && financed.loan.payment > 0);
   assert.equal(financed.upfront, Math.round((15000 - financed.loan.amount) * 100) / 100, 'upfront is the part not borrowed');
@@ -431,6 +431,103 @@ test('a figure the model found by search enters the plan only with a quote the s
   assert.equal(bad.state.draft.price, 15000);
   assert.match(invented.seen.results[2].error, /word for word/);
   assert.match(invented.seen.results[3].error, /must contain the value/);
+});
+
+test('cuts can target any of the user\'s own spending categories, not just two', async () => {
+  const app = createContainer();
+  let r = await confirmed(app, 'Could I buy a car next year?');
+  const base = r.answer.scenarios[0].monthlyCapacity;
+  r = await act(app, 'what_if', { cut_group: 'restaurants', cut_pct: 50 }, r.state);
+  assert.deepEqual(r.state.draft.cuts, [{ group: 'Restaurants', pct: 50 }], 'stored under the category name from the data');
+  const withRestaurants = r.answer.scenarios[0].monthlyCapacity;
+  assert.ok(withRestaurants > base);
+  r = await act(app, 'what_if', { cut_group: 'Taxi', cut_pct: 100 }, r.state);
+  assert.equal(r.state.draft.cuts.length, 2, 'several categories at once');
+  assert.ok(r.answer.scenarios[0].monthlyCapacity > withRestaurants);
+  r = await act(app, 'what_if', { cut_group: 'restaurants', cut_pct: 0 }, r.state);
+  assert.deepEqual(r.state.draft.cuts.map((c: any) => c.group), ['taxi'], 'a cut of 0% removes it');
+  await assert.rejects(() => act(app, 'what_if', { cut_group: 'yachts', cut_pct: 10 }, r.state), (e: any) => e.status === 400 && /Choose from: .*Restaurants/.test(e.message));
+});
+
+test('a loan is a choice: amount, years and rate are yours, and the rate says where it came from', async () => {
+  const app = createContainer();
+  let r = await confirmed(app, 'Could I buy a car next year?');
+  r = await act(app, 'what_if', { loan: true }, r.state);
+  const auto = r.answer.scenarios[0];
+  assert.ok(auto.loan.amount > 0 && auto.loan.totalInterest > 0);
+  assert.equal(r.state.draft.loan.rateSource, 'assumption');
+
+  const half = await act(app, 'what_if', { loan_amount: 5000, loan_years: 3, loan_rate_pct: 4.5 }, r.state);
+  const loan = half.answer.scenarios[0].loan;
+  assert.deepEqual([loan.amount, loan.years, loan.ratePct, half.state.draft.loan.rateSource], [5000, 3, 4.5, 'user']);
+  assert.equal(loan.totalInterest, Math.round((loan.payment * 36 - 5000) * 100) / 100);
+  assert.ok(half.answer.scenarios[0].monthlyNeeded > auto.monthlyNeeded, 'borrowing less means saving more each month');
+  const none = await act(app, 'what_if', { loan_amount: 0 }, r.state);
+  assert.equal(none.answer.scenarios[0].loan, undefined, 'borrowing nothing is no loan');
+
+  // A rate Exa found is used, with its source, when a loan is switched on.
+  const research = fakeResearch({ 'for sale': CAR_MARKET, 'yearly cost': CAR_COSTS, loan: {
+    content: { interest_rate_pct: 10.64 }, grounding: [{ field: 'interest_rate_pct', confidence: 'high', urls: ['https://www.example.fi/loans'] }], sources: [] } });
+  const found = await act(createContainer({ research }), 'research_goal', {}, r.state.draft ? { ...r.state, draft: { ...r.state.draft, loan: null } } : r.state);
+  const withRate = await act(createContainer({ research }), 'what_if', { loan: true }, found.state);
+  assert.deepEqual([withRate.state.draft.loan.ratePct, withRate.state.draft.loan.rateSource, withRate.state.draft.loan.rateUrl], [10.64, 'research', 'https://www.example.fi/loans']);
+});
+
+test('when the plan falls short the trainer offers concrete ways to close the gap', async () => {
+  const app = createContainer();
+  const r = await confirmed(app, 'Could I buy a car next year?');
+  const ids = r.answer.fixes.map((f: any) => f.id);
+  assert.deepEqual(ids, ['wait', 'price', 'loan'], 'no cut suggestion: the gap is more than half of everyday spending');
+  const wait = r.answer.fixes.find((f: any) => f.id === 'wait');
+  const waited = await act(app, 'what_if', wait.args, r.state);
+  assert.equal(waited.answer.scenarios[0].gap, 0, 'the suggested wait closes the gap');
+  const price = r.answer.fixes.find((f: any) => f.id === 'price');
+  assert.equal((await act(app, 'what_if', price.args, r.state)).answer.scenarios[0].gap, 0);
+  const fitting = await confirmed(app, 'Could I afford a €3,800 trip in 8 months?');
+  assert.equal(fitting.answer.fixes, undefined, 'nothing to fix when it fits');
+});
+
+// ---- The trace: what the trainer did, step by step ----
+
+test('every answer carries a trace of the steps behind it, with Exa queries and sources', async () => {
+  const research = fakeResearch({ 'for sale': CAR_MARKET, 'yearly cost': CAR_COSTS });
+  const app = createContainer({ research });
+  const car = await confirmed(app, 'Could I buy a car next year?');
+  const trace = car.answer.trace;
+  assert.deepEqual(trace.map((t: any) => [t.kind, t.status]), [['rules', 'done'], ['tool', 'done']]);
+  assert.match(trace[1].title, /Ran the numbers/);
+  assert.ok(typeof trace[1].ms === 'number' && trace[1].detail);
+
+  const events: any[] = [];
+  const researched = await app.handle('POST', '/api/trainer/action', { action: { name: 'research_goal' }, state: car.state }, {}, (e: any) => events.push(e));
+  const step = researched.answer.trace[0];
+  assert.match(step.title, /Researched on the web with Exa/);
+  assert.equal(step.items.length, 3, 'the queries that were asked: options, running costs, loan');
+  assert.match(step.items[0], /^Asked Exa: car for sale in Finland/);
+  assert.ok(step.sources.length > 0 && step.sources.every((s: any) => s.url.startsWith('http')));
+  assert.deepEqual(events.map((e) => [e.step.id, e.step.status]), [['tool-1', 'running'], ['tool-1', 'done']], 'steps are reported live: running, then done');
+});
+
+test('a failing tool and a failing model show up in the trace', async () => {
+  const broken: AgentModel = { run: async () => { throw new Error('quota exceeded'); } };
+  const r = await say(createContainer({ agent: broken, log: () => {} }), 'Where did my money go?');
+  assert.deepEqual(r.answer.trace.map((t: any) => [t.id, t.status]), [['model', 'failed'], ['rules', 'done'], ['tool-1', 'done']]);
+  assert.match(r.answer.trace[0].detail, /quota exceeded/);
+  const events: any[] = [];
+  await assert.rejects(() => createContainer().handle('POST', '/api/trainer/action', { action: { name: 'reclassify', args: { line_id: 'nope', basket: 'regular' } } }, {}, (e: any) => events.push(e)), status(400));
+  assert.deepEqual(events.map((e) => e.step.status), ['running', 'failed']);
+});
+
+test('HTTP adapter streams the steps, then the result, when the client asks for NDJSON', async () => {
+  await withServer({}, {}, async (base) => {
+    const res = await fetch(`${base}/api/trainer/chat`, { method: 'POST', headers: { Accept: 'application/x-ndjson' }, body: JSON.stringify({ messages: [{ role: 'user', text: 'Where did my money go?' }] }) });
+    assert.match(res.headers.get('content-type')!, /ndjson/);
+    const lines = (await res.text()).trim().split('\n').map((l) => JSON.parse(l));
+    assert.deepEqual(lines.map((l) => l.type), ['step', 'step', 'step', 'done']);
+    assert.equal(lines.at(-1).result.answer.baskets.length, 3);
+    const bad = await fetch(`${base}/api/trainer/chat`, { method: 'POST', headers: { Accept: 'application/x-ndjson' }, body: JSON.stringify({ messages: [] }) });
+    assert.deepEqual(JSON.parse((await bad.text()).trim()), { type: 'error', status: 400, message: 'messages must be a non-empty list' });
+  });
 });
 
 // ---- Conversation with a model ----
