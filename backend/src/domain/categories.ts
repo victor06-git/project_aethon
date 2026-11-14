@@ -30,7 +30,9 @@ export const COACH_KEY_BY_MCC: Record<string, string> = {
 export const FIXTURE_LABEL: Record<string, string> = {
   food_delivery: 'Food delivery', groceries: 'Groceries', taxi: 'Taxi', leisure: 'Leisure',
   housing: 'Housing', loan: 'Mortgage', fitness: 'Fitness', subscriptions: 'Subscriptions',
-  transport: 'Transport', fuel: 'Fuel', salary: 'Salary', utilities: 'Utilities'
+  transport: 'Transport', fuel: 'Fuel', salary: 'Salary', utilities: 'Utilities',
+  restaurants: 'Restaurants', phone: 'Phone', insurance: 'Insurance', health: 'Health',
+  repairs: 'Repairs', services: 'Services', transfer: 'Transfer'
 };
 
 interface Row { mcc?: string | null; type?: string; category?: string }

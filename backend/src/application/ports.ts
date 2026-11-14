@@ -1,7 +1,8 @@
 // Ports: the contracts between the application layer and everything outside it.
 // Infrastructure implements them; the application only calls these methods.
 // Swap an implementation in container.ts without touching services, router or UI.
-import type { Account, CityPoint, Letter, Route, SafeToSpend, Scenario, Suggestion, Transaction } from '../domain/types';
+import type { Account, ChatTurn, CityPoint, Letter, Route, SafeToSpend, Scenario, Suggestion, Transaction } from '../domain/types';
+import type { Extraction, Source } from '../domain/trainer';
 
 /** The user's own money data. Adapters: fixtureTransactions (demo), csvTransactions (S-Pankki dataset). */
 export interface TransactionRepository {
@@ -53,8 +54,43 @@ export interface Catalog {
   messages(): any;
 }
 
+/** Accounts at other banks, shared through PSD2. Adapter today: repositories/fixtureExternal (demo). */
+export interface ExternalAccounts {
+  bank: string;
+  accounts(): Account[];
+  transactions(asOf: string): Transaction[];
+}
+
+/** Web research. Adapter: research/exaResearch (Exa). */
+export interface ResearchProvider {
+  /** Passages relevant to the query, each with its source. */
+  search(query: string): Promise<Source[]>;
+  /** The fields described by `properties` (JSON Schema), each with the sources that back it. */
+  extract(query: string, properties: Record<string, unknown>): Promise<Extraction>;
+}
+
+/** A function the model may call. `parameters` is a JSON Schema object. */
+export interface ToolSpec { name: string; description: string; parameters: { type: 'object'; properties: Record<string, unknown>; required?: string[] } }
+export interface ToolCall { name: string; args: Record<string, unknown> }
+
+export interface AgentRequest {
+  system: string;
+  turns: ChatTurn[];
+  tools: ToolSpec[];
+  execute(call: ToolCall): Promise<unknown>;   // runs a tool, returns what the model should see
+  maxSteps?: number;
+}
+
+/** A model that answers by calling tools until it can reply in text. Adapter: llm/geminiAgent (Gemini function calling). */
+export interface AgentModel {
+  run(request: AgentRequest): Promise<string>;
+}
+
 const PORTS = {
   TransactionRepository: ['asOf', 'accounts', 'invested', 'list'],
+  ExternalAccounts: ['accounts', 'transactions'],
+  ResearchProvider: ['search', 'extract'],
+  AgentModel: ['run'],
   QuestionClassifier: ['classify'],
   ForecastEngine: ['listScenarios', 'getScenario', 'valuesAt', 'suggestions', 'safeToSpend', 'rule', 'expenses']
 } as const;

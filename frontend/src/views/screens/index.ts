@@ -10,6 +10,7 @@ import {
   ProfileScreen, SearchScreen, SettingsScreen, TransferScreen, UpcomingScreen, VirtualAssistantScreen
 } from './bank/Services';
 import { ExpensesScreen, InvestReviScreen, RecurringScreen } from '../revi/ReviScreens';
+import { CashflowScreen, PlanScreen } from '../revi/TrainerScreens';
 
 export interface ScreenDef { title: string; Component: ComponentType<{ arg: string | null }> }
 
@@ -52,7 +53,9 @@ const bank: Record<string, ScreenDef> = {
 const revi: Record<string, ScreenDef> = {
   invest: { title: 'Invest', Component: InvestReviScreen },
   expenses: { title: 'Necessary expenses', Component: ExpensesScreen },
-  recurring: { title: 'Recurring expenses', Component: RecurringScreen }
+  recurring: { title: 'Recurring expenses', Component: RecurringScreen },
+  cashflow: { title: 'Three baskets', Component: CashflowScreen },
+  plan: { title: 'Your plan', Component: PlanScreen }
 };
 
 export const screensFor = (withRevi: boolean): Record<string, ScreenDef> => (withRevi ? { ...bank, ...revi } : bank);

@@ -1,7 +1,11 @@
 // Preview page: three modes (bank as is, bank + Revi, side by side). Each phone is its own
 // controller with its own model. The devices keep Xiaomi 14 proportions and scale to the window.
+// At phone width, or with ?embed in the URL (an iframe inside S-mobiili), the app is the page:
+// no frame and no mode switcher, full-bleed up to 430px wide.
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { PhoneController } from './controllers/PhoneController';
+
+const EMBED_MAX_WIDTH = 480;
 
 type Mode = 'bank' | 'revi' | 'both';
 const MODES: { id: Mode; label: string }[] = [
@@ -12,8 +16,11 @@ function savedMode(): Mode {
   try { return (localStorage.getItem('revi-mode') as Mode) || 'revi'; } catch { return 'revi'; }
 }
 
+const isEmbedded = () => window.innerWidth <= EMBED_MAX_WIDTH || new URLSearchParams(window.location.search).has('embed');
+
 export function App() {
   const [mode, setMode] = useState<Mode>(savedMode);
+  const [embedded, setEmbedded] = useState(isEmbedded);
   const stage = useRef<HTMLElement>(null);
   const [zoom, setZoom] = useState(1);
   const panes = mode === 'both'
@@ -24,6 +31,7 @@ export function App() {
 
   useLayoutEffect(() => {
     const fit = () => {
+      setEmbedded(isEmbedded());
       if (!stage.current) return;
       const top = stage.current.getBoundingClientRect().top + window.scrollY;
       const caption = mode === 'both' ? 28 : 0;
@@ -36,6 +44,9 @@ export function App() {
     return () => window.removeEventListener('resize', fit);
   }, [mode, panes.length]);
 
+  if (embedded) {
+    return <main className="stage embed"><PhoneController revi label="Revi in S-mobiili" /></main>;
+  }
   return (
     <>
       <header className="topbar">

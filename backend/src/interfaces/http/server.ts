@@ -7,6 +7,8 @@ import { createServer as createVite } from 'vite';
 import { config } from '../../config';
 import { createContainer } from '../../container';
 import { createLlm } from '../../infrastructure/llm';
+import { createAgent } from '../../infrastructure/llm/geminiAgent';
+import { createResearch } from '../../infrastructure/research/exaResearch';
 import { loadCsvTransactions } from '../../infrastructure/repositories/csvTransactions';
 import { handleApi } from './nodeAdapter';
 
@@ -28,7 +30,9 @@ async function loadTransactions() {
 async function main() {
   const transactions = await loadTransactions();
   const model = createLlm(config);
-  const app = createContainer({ transactions, model, log });
+  const agent = createAgent(config);
+  const research = createResearch(config);
+  const app = createContainer({ transactions, model, agent, research, log });
   const server = http.createServer();
   // Vite serves the React app and live-reloads it over the same port (hot module replacement).
   const vite = await createVite({
@@ -41,10 +45,12 @@ async function main() {
     const url = new URL(req.url ?? '/', 'http://localhost');
     if (url.pathname === '/favicon.ico') { res.writeHead(204); return res.end(); }
     if (!url.pathname.startsWith('/api/')) return vite.middlewares(req, res);
-    void handleApi(app, req, res, log);
+    void handleApi(app, req, res, log, { corsOrigin: config.corsOrigin });
   });
   server.listen(config.port, () => {
     console.log(`Revi preview: http://localhost:${config.port}`);
+    console.log(agent ? `Trainer: Gemini ${config.gemini.model} with tools (rules as fallback)` : 'Trainer: rules only (set GEMINI_API_KEY for Gemini)');
+    console.log(research ? 'Web research: Exa' : 'Web research: off (set EXA_API_KEY)');
     console.log(model ? `Coach model: ${config.provider} ${config.provider === 'gemini' ? config.gemini.model : ''} (rules as fallback)` : 'Coach model: off, rules only');
   });
 }
