@@ -190,7 +190,7 @@ export function NextStepCard({ step, onGo, busy }: { step: NextStep; onGo: (step
     <div className="t-next">
       <div className="t-sources-title">{step.title}</div>
       <div>{step.detail}</div>
-      {(step.ask || step.screen) && <button type="button" disabled={busy} onClick={() => onGo(step)}>{step.screen === 'transfer' ? 'Review transfer preview' : step.ask ?? 'Open banking'}</button>}
+      {(step.ask || step.screen) && <button type="button" disabled={busy} onClick={() => onGo(step)}>{step.screen === 'transfer' ? 'Review transfer preview' : step.screen === 'plan' ? 'Open plan and sliders' : step.ask ?? 'Open banking'}</button>}
     </div>
   );
 }

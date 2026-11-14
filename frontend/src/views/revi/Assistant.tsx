@@ -47,7 +47,6 @@ function AnswerBubble({ a, previous, active }: { a: Answer; previous?: Answer; a
   const splitAt = a.type === 'research' && a.goal ? a.text.indexOf('\n') : -1;
   const reply = splitAt < 0 ? a.text : a.text.slice(0, splitAt);
   const whatIf = (change: Record<string, unknown>, said: string) => { void model.act(said, 'what_if', change); };
-  const research = () => { void model.act('Research with Exa', 'research_goal'); };
   const max = a.rows ? Math.max(...a.rows.map((r) => r.amount), 1) : 1;
   const open = (screen: string, arg?: string) => { nav.closeAssistant(); nav.go(screen, arg); };
   const sendLetter = async (e: FormEvent) => {
@@ -76,21 +75,15 @@ function AnswerBubble({ a, previous, active }: { a: Answer; previous?: Answer; a
           onConfirm={() => { void model.act('Confirm brief', 'confirm_brief'); }}
           onChange={whatIf} />
       )}
-      {active && a.goal && a.goal.price <= 0 && (
-        <button type="button" className="k-action" disabled={busy} onClick={research}>Look up the price with Exa</button>
-      )}
       {scenario && previousScenario && <ScenarioChange current={scenario} previous={previousScenario} />}
       {a.scenarios && <ScenarioCards scenarios={a.scenarios} />}
       {active && a.goal?.confirmed && scenario && (
         <div className="t-chat-actions">
-          <button type="button" className={a.type === 'research' ? 'k-action' : 'k-action primary'}
-            disabled={busy} onClick={research}>
-            {a.type === 'research' ? 'Search again with Exa' : 'Research with Exa'}
-          </button>
-          <button type="button" className="k-action" disabled={busy || a.goal.months > 237}
+          {/* Waiting only helps when saving is the problem, not the running costs afterwards. */}
+          {(scenario.gap > 0 || scenario.afterFree >= 0) && <button type="button" className="k-action" disabled={busy || a.goal.months > 237}
             onClick={() => { void model.act('What if I wait 3 more months?', 'what_if', { add_months: 3 }); }}>
             Try 3 more months
-          </button>
+          </button>}
           {canSave && <button type="button" className="k-action" disabled={busy}
             onClick={() => { void model.act('Save this plan', 'agree_plan'); }}>Save this plan</button>}
         </div>

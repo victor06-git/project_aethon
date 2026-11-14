@@ -372,7 +372,7 @@ test('goal research with Exa: options, costs beyond the price, and a source for 
   const car = await confirmed(app, 'Could I buy a car next year?');
   const r = await say(app, 'Look up real prices', car.state);
   assert.equal(r.answer.type, 'research');
-  assert.equal(research.queries.length, 4, 'market benchmarks, individual listings, running costs and financing');
+  assert.equal(research.queries.length, 8, 'confirming researched once (benchmarks, listings, running costs, financing), the request once more');
   assert.ok(research.queries[0].includes(`car for sale in Finland ${new Date().getUTCFullYear()}`));
 
   const goal = r.state.draft;
@@ -384,7 +384,8 @@ test('goal research with Exa: options, costs beyond the price, and a source for 
   assert.deepEqual([cost('maintenance').source, cost('tax').source], ['assumption', 'assumption'], 'out of range or low confidence: the assumption stays');
   assert.match(r.answer.text, /Typical price: €12,500 \(example\.fi\)[\s\S]*No source stated clearly: maintenance and tyres, vehicle tax/);
   assert.match(r.answer.text, /Exa could not check financing terms/);
-  assert.ok(r.answer.scenarios[0].monthlyNeeded < car.answer.scenarios[0].monthlyNeeded);
+  assert.equal(car.answer.type, 'research', 'confirming the brief already researched it');
+  assert.equal(r.answer.scenarios[0].monthlyNeeded, car.answer.scenarios[0].monthlyNeeded, 'searching again finds the same figures');
   assert.equal(goal.benchmarks.find((b: any) => b.topic === 'insurance').quote, INSURANCE_SOURCE.snippet);
   assert.ok(r.answer.sources.length >= 2 && r.answer.scenarios, 'sources and the recalculated comparison come with it');
   assert.match(logs.join(' '), /financing.*Exa HTTP 500/, 'a failed topic is logged, the rest still answers');
@@ -425,10 +426,9 @@ test('a revised product needs confirmation, then searches that product with old 
   assert.equal(revised.answer.type, 'brief');
   assert.equal(revised.state.draft.options.length, 0);
   await act(app, 'research_goal', {}, revised.state);
-  assert.equal(research.queries.length, 4, 'no research before the revised brief is confirmed');
-  const confirmed = await act(app, 'confirm_brief', {}, revised.state);
-  await act(app, 'research_goal', {}, confirmed.state);
-  assert.match(research.queries[4], /used Toyota Yaris Hybrid/);
+  assert.equal(research.queries.length, 8, 'no research before the revised brief is confirmed (confirm and the first search ran 4 each)');
+  await act(app, 'confirm_brief', {}, revised.state);
+  assert.match(research.queries[8], /used Toyota Yaris Hybrid/, 'confirming the revised brief researches the new product');
   assert.ok(research.queries.every((query) => !query.includes('Personal case details')));
 });
 
@@ -450,8 +450,10 @@ test('an approved monitor looks the price up again and reports a change with its
   const tripSource = { ...CAR_SOURCE, url: 'https://www.example.fi/trips', snippet: 'This package costs €4,200 for two travellers.' };
   const research = fakeResearch({ 'for sale': { content: { typical_price_eur: 4200 }, grounding: [{ field: 'typical_price_eur', confidence: 'high', urls: [tripSource.url] }], sources: [tripSource] } });
   const app = createContainer({ research });
-  let r = await confirmed(app, 'Could I afford a €3,800 trip in 8 months?');
-  r = await say(app, 'Agree this plan', r.state);
+  // The plan was agreed before prices moved (no Exa then); the state travels with the client.
+  const plain = createContainer();
+  let r = await confirmed(plain, 'Could I afford a €3,800 trip in 8 months?');
+  r = await say(plain, 'Agree this plan', r.state);
   const unwatched = await act(app, 'recheck_plan', {}, r.state);
   assert.equal(research.queries.length, 0, 'nothing is looked up without approval');
   assert.match(unwatched.state.plan.lastCheck.changes[0], /Nothing has changed/);
@@ -780,4 +782,17 @@ test('car flow: type, price, parking, payment, then a brief with the planner; no
 test('car flow: a message that already has a price goes straight to the brief', async () => {
   const r = await say(createContainer(), 'Could I buy a used Toyota Yaris Hybrid for €8,000 in 12 months?');
   assert.deepEqual([r.answer.type, r.state.draft.price], ['brief', 8000]);
+});
+
+test('investing in a property starts a purchase goal; a plan that is too costly to run says what to do next', async () => {
+  const app = createContainer();
+  const flat = await say(app, 'i want invest to the apartment');
+  assert.deepEqual([flat.answer.type, flat.state.draft.kind, flat.state.draft.name], ['brief', 'purchase', 'apartment']);
+
+  const brief = await act(app, 'simulate_goal', { kind: 'car', name: 'hybrid car', price: 14000, months: 60 });
+  const parked = await act(app, 'what_if', { cost_id: 'parking', cost_monthly: 100 }, brief.state);
+  const r = await act(app, 'confirm_brief', {}, parked.state);
+  const plan = r.answer.scenarios[0];
+  assert.ok(plan.gap <= 0 && plan.afterFree < 0, 'saving works, running it does not');
+  assert.deepEqual([r.answer.nextStep.screen, r.answer.nextStep.title], ['plan', 'Next step: make the running costs fit']);
 });
