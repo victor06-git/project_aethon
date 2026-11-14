@@ -8,6 +8,7 @@ import { config } from '../../config';
 import { createContainer } from '../../container';
 import { createLlm } from '../../infrastructure/llm';
 import { loadCsvTransactions } from '../../infrastructure/repositories/csvTransactions';
+import { handleApi } from './nodeAdapter';
 
 const log = (msg: string) => console.warn(`[revi] ${msg}`);
 
@@ -23,11 +24,6 @@ async function loadTransactions() {
   console.log(`Data: S-Pankki dataset, ${customerId}, ${repo.list().length} transactions up to ${repo.asOf()} (${Date.now() - t0} ms)`);
   return repo;
 }
-
-const json = (res: http.ServerResponse, status: number, obj: unknown) => {
-  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-  res.end(JSON.stringify(obj));
-};
 
 async function main() {
   const transactions = await loadTransactions();
@@ -45,18 +41,7 @@ async function main() {
     const url = new URL(req.url ?? '/', 'http://localhost');
     if (url.pathname === '/favicon.ico') { res.writeHead(204); return res.end(); }
     if (!url.pathname.startsWith('/api/')) return vite.middlewares(req, res);
-    let raw = '';
-    req.on('data', (c) => { raw += c; if (raw.length > 100_000) req.destroy(); });
-    req.on('end', async () => {
-      let body: unknown;
-      try { body = raw ? JSON.parse(raw) : undefined; } catch { return json(res, 400, { message: 'Bad JSON' }); }
-      try {
-        json(res, 200, await app.handle(req.method ?? 'GET', url.pathname, body, Object.fromEntries(url.searchParams)));
-      } catch (err: any) {
-        if (!err?.status) log(err?.stack ?? String(err));
-        json(res, err?.status ?? 500, { message: err?.status ? err.message : 'Internal error' });
-      }
-    });
+    void handleApi(app, req, res, log);
   });
   server.listen(config.port, () => {
     console.log(`Revi preview: http://localhost:${config.port}`);
