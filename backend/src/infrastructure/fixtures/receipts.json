@@ -1,0 +1,5 @@
+[
+  { "id": "r1", "store": "S-Market", "date": "2026-11-12", "total": 61.75, "lines": [ { "name": "Groceries", "amount": 54.9 }, { "name": "Other items", "amount": 6.85 } ] },
+  { "id": "r2", "store": "Prisma", "date": "2026-11-07", "total": 102.2, "lines": [ { "name": "Groceries", "amount": 102.2 } ] },
+  { "id": "r3", "store": "ABC", "date": "2026-11-02", "total": 54.12, "lines": [ { "name": "Fuel", "amount": 54.12 } ] }
+]

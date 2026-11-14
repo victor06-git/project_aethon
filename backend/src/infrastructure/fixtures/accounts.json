@@ -1,0 +1,8 @@
+{
+  "accounts": [
+    { "id": "current", "name": "Current account", "iban": "FI•• •••• •••• 1234", "balance": 812.34, "kind": "current" },
+    { "id": "savings", "name": "Savings account", "iban": "FI•• •••• •••• 9999", "balance": 3400.0, "kind": "savings" }
+  ],
+  "invested": 2420.5,
+  "investmentReturnPct": 4.2
+}

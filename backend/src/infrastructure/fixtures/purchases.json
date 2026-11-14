@@ -1,0 +1,10 @@
+{
+  "month": "November 2026",
+  "total": 476.9,
+  "categories": [
+    { "name": "Food", "amount": 312 },
+    { "name": "Home", "amount": 79 },
+    { "name": "Personal care", "amount": 51 },
+    { "name": "Other", "amount": 34.9 }
+  ]
+}
