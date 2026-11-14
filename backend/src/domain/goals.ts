@@ -15,7 +15,8 @@ const CAR_RUNNING: Omit<CostItem, 'source'>[] = [
   { id: 'insurance', label: 'Insurance', monthly: 60 },
   { id: 'fuel', label: 'Fuel or charging', monthly: 110 },
   { id: 'maintenance', label: 'Maintenance and tyres', monthly: 60 },
-  { id: 'tax', label: 'Vehicle tax', monthly: 25 }
+  { id: 'tax', label: 'Vehicle tax', monthly: 25 },
+  { id: 'parking', label: 'Resident parking', monthly: 0 }
 ];
 export const RUNNING_COST_IDS = CAR_RUNNING.map((c) => c.id);
 export const DEFAULT_LOAN: LoanTerms = { years: 5, ratePct: 6 };

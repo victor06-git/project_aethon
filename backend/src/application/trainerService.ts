@@ -7,6 +7,7 @@ import { parseState } from '../domain/trainerState';
 import { BASKETS, TRAINER_DISCLAIMER, eur, type Cashflow, type Source, type TraceStep, type TrainerReply, type TrainerState } from '../domain/trainer';
 import { ungroundedFigures } from './grounding';
 import { approvesPlan, chosenPath, confirmsBrief, ruleCall } from './trainerRules';
+import { carFlow } from './carConversation';
 import { allLines, type ToolOutcome, type TrainerTools } from './trainerTools';
 import type { AgentModel, QuestionClassifier, ToolCall } from './ports';
 
@@ -229,6 +230,15 @@ export function createTrainerService({ tools, rules, agent = null, source, log =
       const routed = await deterministicCall(initial, question);
       const approved = routed && CONSENT_TOOLS.has(routed.name) ? routed : null;
       const talk = conversation(initial, turns, emit);
+      // Guided car purchase when no price was given: one short question per step, then the brief.
+      const car = carFlow(question, turns.slice(0, -1), { free: tools.context(initial).cashflow.free });
+      if (car?.kind === 'ask') return { answer: { ...car.answer, trace: talk.steps() }, state: initial };
+      if (car?.kind === 'start') {
+        talk.note({ id: 'car', kind: 'rules', title: 'Collected your answers: car type, price, parking, payment', status: 'done' });
+        for (const call of car.calls) await talk.execute(call);
+        const r = talk.reply(null);
+        return { ...r, answer: { ...r.answer, text: car.text, ...(car.planner ? { planner: car.planner } : {}) } };
+      }
       // Consent buttons and unequivocal confirmations execute directly; Gemini cannot expand their scope.
       if (approved || confirmsBrief(question) || approvesPlan(question) || chosenPath(question)) return byRules(talk, question, routed);
       if (!agent) return byRules(talk, question, routed);

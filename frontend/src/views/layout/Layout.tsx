@@ -4,8 +4,8 @@ import { Icon } from '../icons';
 
 interface Tab { id: string; label: string; icon: string; raised?: boolean }
 
-// Bank as is: Home is the first tab. With Revi: Invest (with the live 3D City) takes that
-// place, and Home is reached through "S-mobiili" or the house icon in the header.
+// Bank as is: Home is the first tab. With Revi too; the Invest page opens from Home
+// ("Investments") and from Banking, as in the bank.
 const TABS_BANK: Tab[] = [
   { id: 'home', label: 'Home', icon: 'home' },
   { id: 'rewards', label: 'S-Etukortti', icon: 'card' },
@@ -14,7 +14,7 @@ const TABS_BANK: Tab[] = [
   { id: 'me', label: 'Me', icon: 'user' }
 ];
 const TABS: Tab[] = [
-  { id: 'invest', label: 'Invest', icon: 'invest' },
+  { id: 'home', label: 'Home', icon: 'home' },
   { id: 'rewards', label: 'S-Etukortti', icon: 'card' },
   { id: 'pay', label: 'Pay', icon: 'pay' },
   { id: 'banking', label: 'Banking', icon: 'bank' },
@@ -26,16 +26,14 @@ export const StatusBar = () => (
   <div className="status-bar"><span>9:41</span><span className="sb-icons"><i /><i /><i /><b /></span></div>
 );
 
-// Permanent header. The house icon belongs to Revi mode only (Home left the tab bar there);
-// the existing app has none. "S-mobiili" always leads to the banking home screen.
+// Permanent header. No house icon next to the title — "S-mobiili" stays pinned and opens Home.
 export function Header({ subTitle }: { subTitle: string | null }) {
   const nav = useNav();
   return (
     <>
       <header className="appbar">
-        <button type="button" className="brandlink" onClick={nav.home} title="Back to the banking home screen">
+        <button type="button" className="brandlink" onClick={nav.home} title="Back to Home">
           <span className="brand">S-mobiili</span>
-          {nav.revi && <span className="brand-home"><Icon name="home" size={22} /></span>}
         </button>
         <div className="header-actions">
           <button type="button" className="hicon" title="Messages" onClick={() => nav.go('messages')}><Icon name="message" size={22} /></button>

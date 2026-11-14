@@ -104,3 +104,15 @@ test('the predefined suggested questions are all answerable', async () => {
     assert.deepEqual([r.intent, r.id], [q.intent, q.id], q.text);
   }
 });
+
+// Invest tab: market data and the portfolio.
+test('market: holdings add up to the invested amount; every chart has history', async () => {
+  const app = createContainer();
+  const o = await app.handle('GET', '/api/market');
+  const sum = o.holdings.reduce((s: number, h: any) => s + h.value, 0);
+  assert.ok(Math.abs(sum - o.portfolio.value) < 0.05, 'holdings sum to the portfolio value');
+  assert.ok(o.explore.length > 0 && o.holdings.length > 0);
+  assert.match(o.source, /demo/i, 'demo prices are labelled as such');
+  const d = await app.handle('GET', '/api/market/nokia', undefined, { range: '1M' });
+  assert.ok(d.history.length > 15 && d.price === d.history[d.history.length - 1].close);
+});

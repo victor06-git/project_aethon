@@ -1,30 +1,12 @@
-// Revi screens: the Invest tab (live 3D City on top, then investments), expenses, recurring.
+// Revi screens: the 3D City, expenses, recurring. The Invest tab lives in ./invest.
 import { useData } from '../../models/hooks';
 import { money } from '../format';
-import { Btn, Hero, List, Loading, Row, Section } from '../components';
+import { List, Loading, Row, Section } from '../components';
 import { CityView } from './CityView';
 
-export function InvestReviScreen({ arg }: { arg: string | null }) {
-  const v = useData<any>('/api/investments');
-  return (
-    <CityView scenarioId={arg}>
-      {v && !('__error' in v) && (
-        <>
-          <Section title="Your investments" />
-          <Hero label="Value of your investments" value={money(v.value)} side={`Total return +${v.returnPct}%`} />
-          <List>{v.funds.map((f: any) => <Row key={f.id} icon="invest" title={f.name} sub="Fund investment" value={money(f.value)} />)}</List>
-          <div className="actions">
-            <Btn label="Buy" primary modal={['Buy fund', 'No real investments can be made in this demo.']} />
-            <Btn label="Sell" modal={['Sell fund', 'No real investments can be made in this demo.']} />
-          </div>
-          <List>
-            <Row icon="history" title="Necessary expenses" sub="Rent, food average, fixed costs" go="expenses" />
-            <Row icon="pay" title="Recurring expenses" sub="Rent, gym, subscriptions" go="recurring" />
-          </List>
-        </>
-      )}
-    </CityView>
-  );
+// The 3D City on its own screen (opened from the Home card, the chat and the Invest tab).
+export function CityScreen({ arg }: { arg: string | null }) {
+  return <CityView scenarioId={arg} />;
 }
 
 export function ExpensesScreen() {

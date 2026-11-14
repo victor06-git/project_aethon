@@ -83,3 +83,12 @@ The UI shows `figure` large, `range` small, a bar chart for `rows`, a send-it-yo
 | GET | `/api/purchases`, `/api/receipts`, `/api/receipts/:id`, `/api/offers`, `/api/stores`, `/api/bonus` | shopping and Bonus |
 | GET | `/api/payments/upcoming`, `/api/payments/recurring`, `/api/messages`, `/api/profile` | other |
 | POST | `/api/payments`, `/api/transfers`, `/api/letters/send` | demo only: nothing is sent |
+
+## Market (Invest tab)
+
+| Method | Path | Returns |
+|---|---|---|
+| GET | `/api/market` | `{ asOf, source, model, portfolio, holdings[], explore[] }` (holdings carry `shares`, `value`) |
+| GET | `/api/market/:id?range=1W\|1M\|3M\|6M\|1Y` | `{ instrument, price, change, changePct, history[], stats, position }`; `:id` may be `portfolio` |
+
+Prices are demo data until a real feed replaces `fixtureMarket`.

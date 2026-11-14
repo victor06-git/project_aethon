@@ -12,6 +12,7 @@
   --text: #202c24;
   --muted: #77827b;
   --pos: #079643;
+  --neg: #c2412d;
   --shadow: 0 14px 45px #142b1821;
 }
 
@@ -233,9 +234,6 @@ h1, h2, h3 { margin: 0; }
 .city-caption b { font-size: 15px; font-weight: 850; line-height: 1.25; color: var(--deep); text-shadow: 0 0 6px #fff; }
 .city-caption span { font-size: 11.5px; font-weight: 600; color: #4b6052; }
 .city-info { gap: 8px; padding-top: 12px; }
-.city-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.city-controls .formlabel { margin-top: 0; }
-.city-controls .field { padding: 9px 10px; font-size: 13px; }
 .events { display: flex; flex-direction: column; gap: 4px; padding: 4px 2px; font-size: 12.5px; }
 .events .ev { display: flex; gap: 8px; color: var(--muted); }
 .events .ev span { flex: none; width: 86px; font-weight: 700; }
@@ -475,3 +473,84 @@ a.t-src:hover { text-decoration: underline; }
 .stage.embed .phone { width: 100%; max-width: 430px; height: 100dvh; border: 0; border-radius: 0; box-shadow: none; }
 @media (prefers-reduced-motion: reduce) { .k-layer, .k-msg { animation: none; transition: none; } }
 @media (prefers-reduced-motion: reduce) { .splash *, .splash { animation-duration: .01s !important; animation-delay: 0s !important; transition-duration: .01s !important; } }
+
+/* 14. Invest tab with Revi: portfolio, instruments, price chart (Revolut-style
+   structure in the S-mobiili look: square tiles, underline tabs, no chips or round markers) */
+.inv .muted { font-size: 12px; }
+.inv-price { margin-top: 4px; font-size: 32px; font-weight: 850; letter-spacing: -.6px; color: var(--text); }
+.inv-change { margin-top: 2px; font-size: 13px; font-weight: 750; }
+.inv-change .muted { font-weight: 600; }
+.up { color: var(--pos); }
+.down { color: var(--neg); }
+.inv-chart { display: block; width: 100%; height: auto; margin: 6px 0 2px; overflow: visible; }
+.inv-chart-btn { display: block; width: 100%; padding: 0; background: none; border: 0; cursor: pointer; }
+.inv-line { fill: none; stroke: var(--green); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.inv-axis { font-size: 10px; font-weight: 650; fill: #8a9a90; }
+.inv-ranges { display: flex; justify-content: space-between; margin: 4px 0 10px; border-bottom: 1px solid var(--line); }
+.inv-ranges button { flex: 1; padding: 9px 0 8px; font-size: 13px; font-weight: 750; color: var(--muted); background: none; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; cursor: pointer; }
+.inv-ranges button.on { color: var(--deep); border-bottom-color: var(--green); }
+.inv-actions { margin: 12px 0 4px; }
+.inv-head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.inv-name { font-size: 18px; font-weight: 850; }
+.inv-tile { width: 40px; height: 40px; flex: none; display: grid; place-items: center; font-size: 13px; font-weight: 850; letter-spacing: -.02em; color: #fff; border-radius: 10px; }
+.inv-row { gap: 11px; }
+.inv-row .spark { flex: none; }
+.inv-right { display: flex; flex-direction: column; align-items: flex-end; min-width: 76px; font-size: 14px; }
+.inv-right span { font-size: 12px; font-weight: 750; }
+.inv-pos { display: grid; grid-template-columns: 1fr 1fr; background: #fff; }
+.inv-pos > div { display: flex; flex-direction: column; gap: 3px; padding: 14px 15px; }
+.inv-pos > div + div { border-left: 1px solid var(--line); }
+.inv-pos.one { grid-template-columns: 1fr; }
+.inv-pos b { font-size: 18px; font-weight: 850; color: var(--text); }
+.inv-stats { display: grid; grid-template-columns: 1fr 1fr; background: #fff; }
+.inv-stats > div { display: flex; flex-direction: column; gap: 3px; padding: 12px 15px; border-bottom: 1px solid var(--line); }
+.inv-stats > div:nth-child(odd) { border-right: 1px solid var(--line); }
+.inv-stats b { font-size: 14px; font-weight: 800; }
+
+/* 15. Web answers (Exa): numbered citations in the text and the source list under the answer */
+.k-cite { display: inline-block; min-width: 16px; margin: 0 1px; padding: 0 4px; font-size: 10.5px; font-weight: 800; line-height: 15px; text-align: center; vertical-align: 1px; color: var(--deep); background: #e3f4e8; border-radius: 4px; text-decoration: none; }
+.k-cite.data { color: #5a4a00; background: #f6efcf; }
+.k-sources { margin-top: 2px; font-size: 12px; border-top: 1px solid var(--line); padding-top: 6px; }
+.k-sources summary { cursor: pointer; font-weight: 750; color: var(--muted); }
+.k-sources ol { display: flex; flex-direction: column; gap: 8px; margin: 8px 0 2px; padding: 0; list-style: none; }
+.k-sources li { display: flex; gap: 8px; }
+.k-src-n { flex: none; width: 18px; height: 18px; display: grid; place-items: center; font-size: 10.5px; font-weight: 800; color: var(--deep); background: #e3f4e8; border-radius: 4px; }
+.k-sources a { display: block; font-weight: 750; color: var(--deep); text-decoration: none; }
+.k-sources a:hover { text-decoration: underline; }
+.k-src-meta { display: block; color: var(--muted); font-size: 11px; }
+.k-sources q { display: block; margin-top: 3px; color: #4b5a50; font-style: italic; }
+
+/* 15. Car planner in the chat (after the guided car questions) */
+.k-chart { margin-top: 4px; width: 100%; }
+.k-chart-bar { fill: #2f6f4e; }
+.k-chart-bar.on { fill: #1a4d32; }
+.k-chart-hit { cursor: pointer; }
+.k-chart-label { fill: #5a6b60; font-size: 8px; }
+.k-chart-legend, .k-chart-detail { display: flex; flex-wrap: wrap; gap: 6px 10px; margin-top: 4px; font-size: 10px; color: var(--muted); }
+.k-chart-detail b { color: var(--deep); }
+.k-planner { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; width: 100%; }
+.k-slider { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--deep); }
+.k-slider input[type='range'] { width: 100%; accent-color: #2f6f4e; }
+.k-slider-ends { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); }
+.k-planner-sum { font-size: 11px; color: var(--muted); }
+.k-planner-sum b { color: var(--deep); }
+
+/* Compact chat (before the second question): no backdrop page, the input slides out of the
+   launcher, "Welcome to Revi!" and the questions flow above it. `.full` keeps the white screen. */
+.k-launcher .k-ico-close { opacity: 0; transform: rotate(-90deg) scale(.6); border-radius: 50%; background: linear-gradient(145deg, #0bb85a, #078540); box-shadow: 0 8px 22px #0b6b3555; }
+.k-launcher.open .k-ico-mark { opacity: 0; transform: rotate(90deg) scale(.6); }
+.k-launcher.open .k-ico-close { opacity: 1; transform: none; }
+.k-layer.compact { inset: 86px 0 0 0; z-index: 29; display: block; background: transparent; opacity: 1; transform: none; pointer-events: none; }
+.k-layer.compact.open > * { pointer-events: auto; }
+.k-layer.compact::before { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 400px; background: linear-gradient(to top, rgba(250, 252, 250, .99) 0, rgba(250, 252, 250, .96) 70%, rgba(250, 252, 250, 0) 100%); opacity: 0; transition: opacity .35s ease; pointer-events: none; }
+.k-layer.compact.open::before { opacity: 1; }
+.k-layer.compact .k-stack { position: absolute; left: 16px; right: 16px; bottom: 146px; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; max-height: calc(100% - 170px); padding: 4px 2px 10px; overflow: auto; scrollbar-width: none; opacity: 0; transform: translateY(10px); transition: transform .45s cubic-bezier(.16, 1, .3, 1) .18s, opacity .3s ease .18s; }
+.k-layer.compact.open .k-stack { opacity: 1; transform: none; }
+.k-layer.compact .k-msgs { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.k-layer.compact .k-input { position: absolute; right: 80px; bottom: 82px; width: calc(100% - 100px); height: 52px; min-height: 0; margin: 0; box-shadow: 0 10px 28px #0b3a2026; opacity: 0; clip-path: inset(0 0 0 100% round 26px); transition: clip-path .5s cubic-bezier(.16, 1, .3, 1), opacity .2s ease; }
+.k-layer.compact.open .k-input { opacity: 1; clip-path: inset(0 0 0 0 round 26px); }
+.k-hello { padding: 0 4px; font-size: 16px; font-weight: 850; color: var(--deep); text-shadow: 0 0 6px #fff, 0 0 2px #fff; }
+.k-flow { margin: 0; font-size: 12px; font-weight: 650; line-height: 2.05; color: #1d3a28; }
+.k-q { padding: 4px 8px; margin-right: 2px; cursor: pointer; background: #fff; border: 1px solid #cfe8d6; border-radius: 8px; box-shadow: 0 2px 8px #0b3a2014; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+.k-q:hover { background: #f1faf3; border-color: #9fd3b0; }
+.k-q:focus-visible { outline: 2px solid #76cfa0; outline-offset: 1px; }

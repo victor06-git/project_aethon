@@ -72,6 +72,7 @@ export type AnswerType = Intent | 'cashflow' | 'brief' | 'scenario' | 'plan' | '
 export interface Answer {
   type: AnswerType;
   text: string;
+  planner?: ChatPlanner;          // inline car planner (down-payment slider, monthly bars)
   steps?: MathStep[];            // safe-to-spend math
   baskets?: BasketTotal[];       // the three baskets with their lines
   review?: CashLine[];           // assumptions the user may want to correct
@@ -98,3 +99,30 @@ export interface SafeToSpend { amount: number; until: string }
 
 export interface HttpError { status: number; message: string }
 export const httpError = (status: number, message: string): HttpError => ({ status, message });
+
+// Market (Invest tab): instruments and their price history.
+export interface Instrument {
+  id: string;
+  ticker: string;
+  name: string;
+  kind: 'stock' | 'etf';
+  exchange: string;
+  sector: string;
+  color: string;          // tile colour for the logo square
+}
+
+export interface PricePoint { date: string; close: number }
+
+/** Car affordability planner shown in the chat after the guided car questions. The slider
+ *  recalculates in the browser; the figures are the same loan formula as the trainer's. */
+export interface ChatPlanner {
+  kind: 'car_helsinki';
+  price: number;
+  months: number;
+  rateAnnual: number;
+  parkingMonth: number;
+  insuranceMonth: number;
+  leftoverMonth: number;
+  downPayment: number;
+  zoneLabel?: string;
+}

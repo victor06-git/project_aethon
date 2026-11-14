@@ -25,8 +25,11 @@ const act = (app: Container, name: string, args: unknown = {}, state?: unknown) 
 const say = (app: Container, text: string, state?: unknown) => app.handle('POST', '/api/trainer/chat', { messages: [{ role: 'user', text }], state });
 const YES = 'Yes, that is right';
 // Starts a goal and confirms the brief, as a user would.
+// A car question with no price first goes through the guided questions (carConversation.ts);
+// their last step writes this brief, so tests start from it directly.
+const carBrief = (app: Container, state?: unknown) => act(app, 'simulate_goal', { kind: 'car', name: 'car', months: 12 }, state);
 async function confirmed(app: Container, question: string, state?: unknown) {
-  const brief = await say(app, question, state);
+  const brief = question === 'Could I buy a car next year?' ? await carBrief(app, state) : await say(app, question, state);
   assert.equal(brief.answer.type, 'brief', question);
   return say(app, YES, brief.state);
 }
@@ -185,12 +188,12 @@ test('the user corrects assumptions in their own words', async () => {
 
 test('a big decision: savings path, running costs and what-ifs', async () => {
   const app = createContainer();
-  let r = await say(app, 'Could I buy a car next year?');
+  let r = await carBrief(app);
   assert.equal(r.answer.type, 'brief', 'first a brief to confirm, no numbers yet');
   assert.equal(r.answer.scenarios, undefined);
   assert.match(r.answer.text, /\*\*Goal:\*\* car[\s\S]*\*\*Budget:\*\* €15,000 \(my assumption[\s\S]*in 12 months[\s\S]*Is this right\?/);
   assert.deepEqual([r.state.draft.kind, r.state.draft.months, r.state.draft.price, r.state.draft.priceSource, r.state.draft.confirmed], ['car', 12, 15000, 'assumption', false]);
-  assert.equal(r.state.draft.running.length, 4, 'insurance, fuel, maintenance, tax');
+  assert.equal(r.state.draft.running.length, 5, 'insurance, fuel, maintenance, tax, parking');
   r = await say(app, 'Make it 18 months', r.state);
   assert.deepEqual([r.answer.type, r.state.draft.months], ['brief', 18], 'a change before confirming updates the brief');
   r = await say(app, 'Make it 12 months', r.state);
@@ -245,7 +248,7 @@ test('an agreed plan is set aside, and re-checked when spending changes', async 
   const base = await cashflow(app);
   const none = await say(app, 'Agree this plan');
   assert.equal(none.state.plan, null);
-  const brief = await say(app, 'Could I buy a car next year?');
+  const brief = await carBrief(app);
   const early = await say(app, 'Agree this plan', brief.state);
   assert.deepEqual([early.state.plan, early.answer.type], [null, 'brief'], 'the brief is confirmed before anything is agreed');
   const car = await say(app, YES, brief.state);
@@ -471,7 +474,7 @@ test('a figure the model found by search enters the plan only with a quote the s
 
   const good = scriptedAgent([{ name: 'simulate_goal', args: { kind: 'car', name: 'used car', note: 'commutes 40 km a day' } }, search, apply(12500, 'used car sold in Finland was 12 500 euros')],
     'A typical used car costs about **€12,500**.');
-  const r = await say(createContainer({ research, agent: good.agent }), 'Could I buy a used car next year? Check real prices.');
+  const r = await say(createContainer({ research, agent: good.agent }), 'Could I buy a used Toyota next year? Check real prices.');
   assert.deepEqual([r.state.draft.price, r.state.draft.priceSource, r.state.draft.note], [12500, 'research', 'commutes 40 km a day']);
   assert.deepEqual([r.state.draft.benchmarks[0].value, r.state.draft.benchmarks[0].url], [12500, CAR_SOURCE.url]);
   assert.match(r.answer.text, /€12,500/);
@@ -480,7 +483,7 @@ test('a figure the model found by search enters the plan only with a quote the s
 
   const invented = scriptedAgent([{ name: 'simulate_goal', args: { kind: 'car', name: 'used car' } }, search, apply(9000, 'a used car costs 9 000 euros'),
     apply(9000, 'used car sold in Finland was 12 500 euros')], 'Done.');
-  const bad = await say(createContainer({ research, agent: invented.agent }), 'Could I buy a used car next year?');
+  const bad = await say(createContainer({ research, agent: invented.agent }), 'Could I buy a used Toyota next year?');
   assert.equal(bad.state.draft.price, 15000);
   assert.match(invented.seen.results[2].error, /word for word/);
   assert.match(invented.seen.results[3].error, /must state the value and its currency or unit/);
@@ -736,4 +739,45 @@ test('HTTP adapter: CORS headers and preflight only for the configured origin', 
     assert.equal(pre.status, 204);
     assert.match(pre.headers.get('access-control-allow-methods')!, /POST/);
   });
+});
+
+// ---- Guided car purchase: one short question per step, then the brief ----
+
+test('car flow: type, price, parking, payment, then a brief with the planner; nothing simulated before', async () => {
+  const app = createContainer();
+  const msgs: { role: 'user' | 'assistant'; text: string }[] = [];
+  const turn = async (text: string, state?: unknown) => {
+    msgs.push({ role: 'user', text });
+    const r = await app.handle('POST', '/api/trainer/chat', { messages: msgs, state });
+    msgs.push({ role: 'assistant', text: r.answer.text });
+    return r;
+  };
+  let r = await turn('i want to buy a big car');
+  assert.deepEqual([r.answer.type, r.answer.followUps], ['chat', ['Electric', 'Hybrid', 'Petrol / Diesel']]);
+  assert.equal(r.state.draft, null, 'no brief before the questions are answered');
+  r = await turn('Petrol / Diesel', r.state);
+  assert.equal(r.answer.rows.length, 3, 'price bands that fit the leftover, as bars');
+  assert.equal(r.answer.followUps.length, 3, 'three price taps; any other price can be typed');
+  assert.equal(new Set(r.answer.rows.map((x: any) => x.label)).size, 3, 'three different prices');
+  assert.equal(r.state.draft, null);
+  r = await turn('4567', r.state);
+  assert.ok(r.answer.followUps.some((c: string) => /Kallio/.test(c)), 'then the parking zone');
+  r = await turn('Kallio / central (~€60/mo resident)', r.state);
+  assert.ok(r.answer.followUps.some((c: string) => /Loan/.test(c)), 'then how to pay');
+  assert.equal(r.state.draft, null);
+  r = await turn('Loan · 4 years', r.state);
+  assert.equal(r.answer.type, 'brief');
+  assert.deepEqual([r.state.draft.name, r.state.draft.price, r.state.draft.confirmed], ['big petrol car', 4567, false]);
+  assert.equal(r.state.draft.running.find((c: any) => c.id === 'parking').monthly, 60);
+  assert.equal(r.state.draft.loan.years, 4);
+  assert.equal(r.answer.planner.price, 4567);
+  assert.ok(r.answer.text.split(/\s+/).length < 45, 'short: bottom line first');
+  // After the brief, other messages go back to the trainer.
+  r = await turn('Make it 18 months', r.state);
+  assert.deepEqual([r.answer.type, r.state.draft.months], ['brief', 18]);
+});
+
+test('car flow: a message that already has a price goes straight to the brief', async () => {
+  const r = await say(createContainer(), 'Could I buy a used Toyota Yaris Hybrid for €8,000 in 12 months?');
+  assert.deepEqual([r.answer.type, r.state.draft.price], ['brief', 8000]);
 });

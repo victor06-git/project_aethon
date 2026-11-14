@@ -11,7 +11,7 @@ test('a judge can change the car model and brief in plain language', async () =>
   const app = createContainer();
   const first = await ask(app, 'Could I buy a used Toyota Yaris Hybrid for €8,000 in 12 months?');
   const draft = first.state.draft!;
-  assert.deepEqual([draft.name, draft.kind, draft.price, draft.months, draft.running.length], ['used Toyota Yaris Hybrid', 'car', 8000, 12, 4]);
+  assert.deepEqual([draft.name, draft.kind, draft.price, draft.months, draft.running.length], ['used Toyota Yaris Hybrid', 'car', 8000, 12, 5]);
   const confirmed = await ask(app, 'Yes, that is right', first.state);
   const update = await ask(app, 'Switch to a used Skoda Fabia', confirmed.state);
   assert.equal(update.answer.type, 'brief');

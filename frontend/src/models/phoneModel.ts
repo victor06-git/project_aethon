@@ -13,7 +13,7 @@ export type ChatMessage =
   | { role: 'bot'; answer: Answer }
   | { role: 'bot'; error: string; retry: () => void };
 
-export interface CityState { days: number; compare: string; anim: number[][] | null }
+export interface CityState { days: number; anim: number[][] | null }
 export type CashflowView = Cashflow & { disclaimer: string };
 
 // The trainer state (corrections, goal in progress, agreed plan) lives in this browser and
@@ -47,7 +47,7 @@ export class PhoneModel {
   private flowState: TrainerState | null = null;   // the trainer state `flow` was computed for
   private flowLoading = false;
   chat: ChatMessage[] = [];
-  city: CityState = { days: 0, compare: '', anim: null };
+  city: CityState = { days: 0, anim: null };
   trainer: TrainerState = loadTrainer();
   large = loadLarge();     // larger text, for people who find the default small
   version = 0;

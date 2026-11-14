@@ -5,6 +5,7 @@ import { useModel } from '../../models/hooks';
 import type { ChatMessage } from '../../models/phoneModel';
 import { useNav } from '../../controllers/nav';
 import { money } from '../format';
+import { CarPlanner } from './chatWidgets';
 import { Icon } from '../icons';
 import { AuroraOrb } from './AuroraOrb';
 import { Markdown } from './Markdown';
@@ -62,7 +63,8 @@ function AnswerBubble({ a, previous, active }: { a: Answer; previous?: Answer; a
       {a.steps && <MathSteps steps={a.steps} />}
       {a.baskets && <BasketBar baskets={a.baskets} explain onPick={() => open('cashflow')} />}
       {active && a.review && a.review.length > 0 && <ReviewLines lines={a.review} />}
-      {a.rows && a.rows.length > 0 && (
+      {a.planner && <CarPlanner planner={a.planner} />}
+      {!a.planner && a.rows && a.rows.length > 0 && (
         <div className="bars">{a.rows.map((r) => (
           <div key={r.label} className="bar-row"><span>{r.label}</span>
             <div className="bar-track"><div className="bar-fill" style={{ width: `${(r.amount / max) * 100}%` }} /></div>
@@ -128,7 +130,8 @@ function AnswerBubble({ a, previous, active }: { a: Answer; previous?: Answer; a
         </form>
       )}
       {a.scenarioId && <button type="button" className="k-action" onClick={() => nav.openCity(a.scenarioId)}>View in 3D City <Icon name="arrow" size={16} /></button>}
-      {active && (a.scenarios || a.plan || a.type === 'brief') && <button type="button" className="k-action" onClick={() => open('plan')}>{a.plan ? 'Open plan and recheck settings' : 'Open plan and sliders'} <Icon name="arrow" size={16} /></button>}
+      {/* Plan screen only once there are numbers to play with: after the brief is confirmed. */}
+      {active && (a.scenarios || a.plan) && <button type="button" className="k-action" onClick={() => open('plan')}>{a.plan ? 'Open plan and recheck settings' : 'Open plan and sliders'} <Icon name="arrow" size={16} /></button>}
       {a.examples && a.examples.length > 0 && (
         <div className="k-suggest">{a.examples.map((x) => <button key={x} type="button" onClick={() => nav.ask(x)}>{x}</button>)}</div>
       )}
@@ -169,6 +172,9 @@ export function Assistant({ open, intro }: { open: boolean; intro: 'pending' | '
   const previousAnswer = previousReply && 'answer' in previousReply ? previousReply.answer : undefined;
   const last = chat.at(-1);
   const pending = last && 'pending' in last;
+  // Compact chat first (slides out of the launcher, "Welcome to Revi!" and the questions above it);
+  // from the second question on it fills the screen with white and gets a back arrow.
+  const full = open && chat.filter((m) => m.role === 'user').length >= 2;
   useEffect(() => {
     if (!layer.shown) return;
     const from = document.activeElement;
@@ -197,43 +203,43 @@ export function Assistant({ open, intro }: { open: boolean; intro: 'pending' | '
 
   return (
     <>
-      <button type="button" className={`k-launcher${open ? ' hidden' : ''}`} onClick={nav.openAssistant}
-        tabIndex={open ? -1 : undefined} aria-hidden={open || undefined} aria-label="Open Revi assistant">
+      <button type="button" className={`k-launcher${open ? ' open' : ''}${full ? ' hidden' : ''}`} onClick={open ? nav.closeAssistant : nav.openAssistant}
+        tabIndex={full ? -1 : undefined} aria-hidden={full || undefined} aria-label={`${open ? 'Close' : 'Open'} Revi assistant`}>
         <span className="k-ico k-ico-mark"><AuroraOrb /></span>
+        <span className="k-ico k-ico-close"><Icon name="close" size={22} /></span>
       </button>
 
       {teaser.mounted && (
         <button type="button" className={`k-teaser${teaser.shown ? ' show' : ''}`} onClick={nav.openAssistant}>
           <b>Hi, I'm Revi</b>
-          <span>Ask about your spending or plan your next purchase.</span>
+          <span>Every financial decision has an echo. Ask what could happen before you decide.</span>
         </button>
       )}
 
       {layer.mounted && (
-        <div className={`k-layer${layer.shown ? ' open' : ''}`} role="dialog" aria-modal="true" aria-label="Revi assistant" inert={!open}>
-          <header className="k-head">
+        <div className={`k-layer${layer.shown ? ' open' : ''}${full ? ' full' : ' compact'}`} role="dialog" aria-modal={full} aria-label="Revi assistant" inert={!open}>
+          {full && <header className="k-head">
             <button ref={back} type="button" className="k-back" onClick={nav.closeAssistant} aria-label="Back to banking"><Icon name="back" size={22} /></button>
             <span className="k-head-orb"><AuroraOrb waves="none" /></span>
             <b>Revi</b>
             <span className="k-demo-label">{demoDataLabel(status?.data)}</span>
-          </header>
+          </header>}
           <div ref={panel} className="k-stack">
             {chat.length ? (
               <div className="k-msgs" role="log" aria-label="Conversation">{chat.map((m, i) => (
                 <Message key={i} m={m} active={i === chat.length - 1} previous={i === chat.length - 1 ? previousAnswer : undefined} />
               ))}</div>
             ) : (
-              <div className="k-welcome">
-                <h2>What’s on your mind?</h2>
-                <p>Ask Revi about your spending or see how a goal fits your budget.</p>
-                <div className="k-starters">{STARTERS.map(({ title, question }) => (
-                  <button key={question} type="button" onClick={() => nav.ask(question)}>
-                    <span><b>{title}</b><small>{question}</small></span>
-                    <Icon name="arrow" size={18} />
-                  </button>
-                ))}</div>
-                {status && <p className="k-research-status">{status.research ? 'Live web research with Exa' : 'Live web research is unavailable in this session.'}</p>}
-              </div>
+              <>
+                <div className="k-hello">Welcome to Revi!</div>
+                <p className="k-flow">{STARTERS.map(({ title, question }, i) => (
+                  <span key={question}>
+                    <span className="k-q" role="button" tabIndex={0} title={title}
+                      onClick={() => nav.ask(question)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); nav.ask(question); } }}>{question}</span>
+                    {i < STARTERS.length - 1 ? ' ' : ''}
+                  </span>
+                ))}</p>
+              </>
             )}
           </div>
           <form className="k-input" onSubmit={submit}>

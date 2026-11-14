@@ -48,7 +48,7 @@ export function PhoneController({ revi, label }: { revi: boolean; label: string 
       });
     },
     home: () => { setAssistant('closed'); setTabState({ id: 'home', arg: null }); setStack([]); scrollTop(); },
-    openCity: (id = 'stop_food') => { setAssistant('closed'); setTabState({ id: 'invest', arg: id }); setStack([]); scrollTop(); },
+    openCity: (id = 'stop_food') => { setAssistant('closed'); setStack((s) => [...s, { name: 'city', arg: id }]); scrollTop(); },
     showModal: (title, body) => setModal({ title, body }),
     openAssistant: () => { if (revi) { setIntro('done'); setAssistant('open'); } },
     closeAssistant: () => setAssistant('closed'),

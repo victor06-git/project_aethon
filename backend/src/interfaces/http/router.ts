@@ -4,6 +4,7 @@ import { httpError } from '../../domain/types';
 import type { BankService } from '../../application/bankService';
 import type { CoachService } from '../../application/coachService';
 import type { TrainerService } from '../../application/trainerService';
+import type { MarketService } from '../../application/marketService';
 
 type Query = Record<string, string>;
 type Emit = (event: { type: 'step'; step: unknown }) => void;
@@ -16,7 +17,7 @@ function compile(method: string, pattern: string, handler: Handler): Route {
   return { method, re, keys, handler };
 }
 
-export function createRouter({ bank, coach, trainer }: { bank: BankService; coach: CoachService; trainer: TrainerService }) {
+export function createRouter({ bank, coach, trainer, invest }: { bank: BankService; coach: CoachService; trainer: TrainerService; invest: MarketService }) {
   const routes: Route[] = [
     // Personal Economic Trainer. The client keeps the trainer state and sends it with each request.
     compile('GET', '/api/trainer/status', () => trainer.status()),
@@ -34,6 +35,9 @@ export function createRouter({ bank, coach, trainer }: { bank: BankService; coac
     compile('GET', '/api/loans', () => bank.loans()),
     compile('GET', '/api/loans/mortgage', () => bank.mortgage()),
     compile('GET', '/api/investments', () => bank.investments()),
+    // Invest tab (market data)
+    compile('GET', '/api/market', () => invest.overview()),
+    compile('GET', '/api/market/:id', (p, q) => invest.instrument(p.id, q.range)),
     compile('GET', '/api/purchases', () => bank.purchases()),
     compile('GET', '/api/receipts', () => bank.receipts()),
     compile('GET', '/api/receipts/:id', (p) => bank.receipt(p.id)),

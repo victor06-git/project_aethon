@@ -8,7 +8,7 @@ export interface Nav {
   setTab(id: string, arg?: string | null): void;
   setArg(arg: string | null): void;       // change what the current screen shows, without a Back step
   home(): void;
-  openCity(scenarioId?: string): void;    // the 3D City lives at the top of the Invest tab
+  openCity(scenarioId?: string): void;    // opens the 3D City screen on top of the current tab
   showModal(title: string, body: string): void;
   openAssistant(): void;
   closeAssistant(): void;

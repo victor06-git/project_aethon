@@ -1,5 +1,5 @@
-// The 3D Financial City: live scene first, then the timeline strip, then scenario controls.
-// Used at the top of the Invest tab. Numbers come from the engine (/api/coach/scenarios/:id/at).
+// The 3D Financial City: live scene first, then the timeline strip, then the events.
+// Opened as its own screen with one scenario. Numbers come from the engine (/api/coach/scenarios/:id/at).
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode } from 'react';
 import type { CityPoint, Scenario, Suggestion } from '../../../../backend/src/domain/types';
 import { useData, useModel } from '../../models/hooks';
@@ -62,7 +62,6 @@ export function CityView({ scenarioId, children }: { scenarioId: string | null; 
   const list = useData<Scenario[]>('/api/coach/scenarios');
   const tips = useData<Suggestion[]>('/api/coach/suggestions');
   const [days, setDaysState] = useState(model.city.days);
-  const [compare, setCompareState] = useState(model.city.compare);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const cityRef = useRef<City3D | null>(null);
   const stripRef = useRef<HTMLDivElement>(null);
@@ -124,8 +123,6 @@ export function CityView({ scenarioId, children }: { scenarioId: string | null; 
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
   }, [ready]);
-  const setCompare = (id: string) => { model.city.compare = id; setCompareState(id); };
-  const cmp = compare && sc && compare !== sc.id ? compare : '';
 
   // Renderer lives as long as the canvas; heights carry over between visits.
   useEffect(() => {
@@ -138,19 +135,17 @@ export function CityView({ scenarioId, children }: { scenarioId: string | null; 
     return () => { window.removeEventListener('resize', onResize); model.city.anim = city.anim; city.destroy(); };
   }, [ready, model]);
 
-  // Paint whenever the scenario, the comparison or the timeline position changes.
+  // Paint whenever the scenario or the timeline position changes.
   useEffect(() => {
     if (!ready || !sc || !cityRef.current) return;
     let stale = false;
-    const ids = [sc.id, ...(cmp ? [cmp] : [])];
-    const scs = ids.map((id) => list.find((s) => s.id === id)!);
-    const maxRef = maxRefOf(scs);
-    Promise.all(ids.map((id) => model.fetch<CityPoint>(`/api/coach/scenarios/${id}/at?day=${sceneDay}`))).then((vals) => {
+    const maxRef = maxRefOf([sc]);
+    model.fetch<CityPoint>(`/api/coach/scenarios/${sc.id}/at?day=${sceneDay}`).then((v) => {
       if (stale || !cityRef.current) return;
-      cityRef.current.setScenes(vals.map((v, i) => ({ title: ids.length > 1 ? scs[i].title : '', values: v.values, confidence: v.confidence, maxRef })));
+      cityRef.current.setScenes([{ title: '', values: v.values, confidence: v.confidence, maxRef }]);
     });
     return () => { stale = true; };
-  }, [ready, sc?.id, cmp, sceneDay, list, model]);
+  }, [ready, sc?.id, sceneDay, model]);
 
   if (!list) return <Loading />;
   if (isError(list)) return <Failed message={list.__error} />;
@@ -187,8 +182,7 @@ export function CityView({ scenarioId, children }: { scenarioId: string | null; 
     <div className="city-page">
       <div className="city-stage">
         <canvas className="city-canvas" ref={canvasRef} title="Drag to rotate the city" />
-        {/* In side-by-side comparison each half carries its own title, so the caption steps aside. */}
-        {!cmp && <div className="city-caption" title={sc.summary}><b>{sc.headline}</b><span>{sc.range}</span></div>}
+        <div className="city-caption" title={sc.summary}><b>{sc.headline}</b><span>{sc.range}</span></div>
         <div className="city-readout">{readout(days)}</div>
       </div>
       <div ref={stripRef} className="timeline" tabIndex={0} role="slider" aria-label="Timeline" aria-valuemin={0} aria-valuemax={MAX_DAY} aria-valuenow={days}
@@ -208,17 +202,6 @@ export function CityView({ scenarioId, children }: { scenarioId: string | null; 
         <div className="tl-now" />
       </div>
       <div className="content city-info">
-        <div className="city-controls">
-          <label><span className="formlabel">Scenario</span>
-            <select className="field" value={sc.id} onChange={(e) => { if (compare === e.target.value) setCompare(''); nav.setArg(e.target.value); }}>
-              {list.map((s) => <option key={s.id} value={s.id}>{s.title}</option>)}
-            </select></label>
-          <label><span className="formlabel">Compare with</span>
-            <select className="field" value={cmp} onChange={(e) => setCompare(e.target.value)}>
-              <option value="">No comparison</option>
-              {list.filter((s) => s.id !== sc.id).map((s) => <option key={s.id} value={s.id}>{s.title}</option>)}
-            </select></label>
-        </div>
         {sc.events.length > 0 && (
           <div className="events">{sc.events.map((ev) => (
             <div key={ev.day} className={`ev${days >= ev.day ? ' past' : ''}`}><span>{readout(ev.day)}</span>{ev.label}</div>

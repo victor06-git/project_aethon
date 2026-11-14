@@ -1,7 +1,7 @@
 // Ports: the contracts between the application layer and everything outside it.
 // Infrastructure implements them; the application only calls these methods.
 // Swap an implementation in container.ts without touching services, router or UI.
-import type { Account, ChatTurn, CityPoint, Letter, Route, SafeToSpend, Scenario, Suggestion, Transaction } from '../domain/types';
+import type { Account, ChatTurn, CityPoint, Instrument, Letter, PricePoint, Route, SafeToSpend, Scenario, Suggestion, Transaction } from '../domain/types';
 import type { Extraction, Source } from '../domain/trainer';
 
 /** The user's own money data. Adapters: fixtureTransactions (demo), csvTransactions (S-Pankki dataset). */
@@ -86,13 +86,22 @@ export interface AgentModel {
   run(request: AgentRequest): Promise<string>;
 }
 
+/** Price data for the Invest tab. Adapter today: market/fixtureMarket (demo prices, generated). */
+export interface MarketData {
+  source: string;                         // shown in the UI, so demo data is never mistaken for real
+  asOf(): string;
+  instruments(): Instrument[];
+  history(id: string): PricePoint[];      // daily closes, oldest first, trading days only
+}
+
 const PORTS = {
   TransactionRepository: ['asOf', 'accounts', 'invested', 'list'],
   ExternalAccounts: ['accounts', 'transactions'],
   ResearchProvider: ['search', 'extract'],
   AgentModel: ['run'],
   QuestionClassifier: ['classify'],
-  ForecastEngine: ['listScenarios', 'getScenario', 'valuesAt', 'suggestions', 'safeToSpend', 'rule', 'expenses']
+  ForecastEngine: ['listScenarios', 'getScenario', 'valuesAt', 'suggestions', 'safeToSpend', 'rule', 'expenses'],
+  MarketData: ['asOf', 'instruments', 'history']
 } as const;
 
 /** Fails fast at start-up if an adapter does not implement its port (useful for plain-JS or Python-backed adapters). */

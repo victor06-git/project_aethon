@@ -9,7 +9,9 @@ import {
   AuthScreen, EinvoicesScreen, HelpScreen, MessagesScreen, NewPaymentScreen, PayslipScreen, PrivateScreen,
   ProfileScreen, SearchScreen, SettingsScreen, TransferScreen, UpcomingScreen, VirtualAssistantScreen
 } from './bank/Services';
-import { ExpensesScreen, InvestReviScreen, RecurringScreen } from '../revi/ReviScreens';
+import { CityScreen, ExpensesScreen, RecurringScreen } from '../revi/ReviScreens';
+import { InvestScreen } from '../revi/invest/InvestScreen';
+import { StockScreen } from '../revi/invest/StockScreen';
 import { CashflowScreen, PlanScreen } from '../revi/TrainerScreens';
 
 export interface ScreenDef { title: string; Component: ComponentType<{ arg: string | null }> }
@@ -51,7 +53,9 @@ const bank: Record<string, ScreenDef> = {
 };
 
 const revi: Record<string, ScreenDef> = {
-  invest: { title: 'Invest', Component: InvestReviScreen },
+  invest: { title: 'Invest', Component: InvestScreen },
+  stock: { title: 'Invest', Component: StockScreen },
+  city: { title: '3D Financial City', Component: CityScreen },
   expenses: { title: 'Necessary expenses', Component: ExpensesScreen },
   recurring: { title: 'Recurring expenses', Component: RecurringScreen },
   cashflow: { title: 'Three baskets', Component: CashflowScreen },
