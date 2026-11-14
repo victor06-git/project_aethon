@@ -1,5 +1,5 @@
-// Vercel serverless entry for /api/*. Bundled by tools/build-vercel.ts into
-// .vercel/output/functions/api.func/index.mjs. Settings come from the Vercel env vars.
+// Vercel entry for the "api" service (vercel.json), public at /api/*. The service receives
+// the original path (/api/...), which is what the router matches. Settings: Vercel env vars.
 // The S-Pankki CSV is git-ignored, so deployments always serve the demo fixtures.
 import type http from 'node:http';
 import { config } from '../../config';

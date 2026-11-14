@@ -1,6 +1,23 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "framework": null,
-  "installCommand": "npm ci",
-  "buildCommand": "npm run build:vercel"
+  "services": {
+    "app": {
+      "root": ".",
+      "framework": "vite",
+      "installCommand": "npm ci",
+      "buildCommand": "npm run build:web",
+      "outputDirectory": "dist/web"
+    },
+    "api": {
+      "root": ".",
+      "runtime": "node",
+      "entrypoint": "backend/src/interfaces/http/vercel.ts",
+      "installCommand": "npm ci",
+      "buildCommand": "echo 'api: no build step, Vercel compiles the entrypoint'"
+    }
+  },
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": { "service": "api" } },
+    { "source": "/(.*)", "destination": { "service": "app" } }
+  ]
 }
