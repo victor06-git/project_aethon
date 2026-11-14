@@ -32,7 +32,8 @@ export function createBankService({ catalog, transactions }: { catalog: Catalog;
     account: (id: string) => {
       const acc = accounts().find((a) => a.id === id) ?? (id === 'current' ? accounts()[0] : undefined);
       if (!acc) throw httpError(404, 'Account not found');
-      return { ...acc, transactions: recent(6) };
+      const list = transactions.list();
+      return { ...acc, transactions: (transactions.source === 'csv' ? list.filter((t) => t.account === acc.id) : list).slice(0, 6) };
     },
     transactions: (limit?: string | number) => recent(Math.min(500, Number(limit) || 50)),
     cards: () => catalog.cards(),

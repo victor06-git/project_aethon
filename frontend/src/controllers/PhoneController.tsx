@@ -64,11 +64,13 @@ export function PhoneController({ revi, label }: { revi: boolean; label: string 
         <section className={`phone${model.large ? ' large' : ''}`} aria-label={label}
           onKeyDown={(e) => { if (e.key === 'Escape' && assistant === 'open') nav.closeAssistant(); }}>
           <StatusBar />
-          <Header subTitle={stack.length ? (screen?.title ?? '') : null} />
-          <main className="screen" ref={screenRef}>
-            {Screen ? <Screen key={`${top.name}`} arg={top.arg} /> : <Failed message="Unknown screen" />}
-          </main>
-          <TabBar active={stack.length ? null : tab.id} />
+          <div className="phone-banking" inert={assistant === 'open'}>
+            <Header subTitle={stack.length ? (screen?.title ?? '') : null} />
+            <main className="screen" ref={screenRef}>
+              {Screen ? <Screen key={top.name} arg={top.arg} /> : <Failed message="Unknown screen" />}
+            </main>
+            <TabBar active={stack.length ? null : tab.id} />
+          </div>
           {revi && <Assistant open={assistant === 'open'} intro={intro} />}
           <Splash revi={revi} />
           {modal && <Modal title={modal.title} body={modal.body} onClose={() => setModal(null)} />}

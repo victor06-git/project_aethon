@@ -11,11 +11,13 @@ import { Icon } from '../icons';
 import { City3D } from './city3d';
 import { maxRefOf } from './CityView';
 import { BasketBar } from './TrainerCards';
+import { CAR_QUESTION, demoDataLabel, useTrainerStatus } from './demo';
 
 export function ReviCard() {
   const nav = useNav();
   const model = useModel();
   const flow = model.cashflow();
+  const status = useTrainerStatus();
   const list = useData<Scenario[]>('/api/coach/scenarios');
   const canvas = useRef<HTMLCanvasElement>(null);
   const ready = Array.isArray(list);
@@ -29,7 +31,7 @@ export function ReviCard() {
       if (cancelled || !canvas.current) return;
       city = new City3D(canvas.current, { compact: true });
       city.setScenes([{ values: v.values, confidence: 1, maxRef: maxRefOf(list as Scenario[]) }]);
-    });
+    }).catch(() => { /* the City preview is optional */ });
     return () => { cancelled = true; city?.destroy(); };
   }, [ready, shown, list, model]);
 
@@ -40,6 +42,7 @@ export function ReviCard() {
       <button type="button" className="k-aa" aria-pressed={model.large} onClick={() => model.toggleLarge()} title="Larger text">Aa</button>
       <button type="button" className="k-card-main" onClick={nav.openAssistant}>
         <span className="k-card-label"><Icon name="revi" size={18} /> Revi · your economic trainer</span>
+        <span className="k-card-data">{demoDataLabel(status?.data)}</span>
         <span className="k-card-text">Safe to spend this week <b>{money(flow.safe.week, 0)}</b></span>
         <span className="k-card-sub">Safe to save this month <b>{money(flow.safeToSave, 0)}</b></span>
         <span className="k-card-cta">Ask Revi <Icon name="arrow" size={15} /></span>
@@ -49,8 +52,8 @@ export function ReviCard() {
       </button>
       <div className="k-card-baskets">
         <BasketBar baskets={flow.baskets} onPick={() => nav.go('cashflow')} />
-        <button type="button" className="t-planchip" onClick={() => nav.go('plan')}>
-          {plan ? `Plan: ${plan.goal.name}, ${money(plan.monthlySaving, 0)} a month` : model.trainer.draft ? `Exploring: ${model.trainer.draft.name}` : 'Plan a goal'} ›
+        <button type="button" className="t-planchip" onClick={() => plan || model.trainer.draft ? nav.go('plan') : nav.ask(CAR_QUESTION)}>
+          {plan ? `Plan: ${plan.goal.name}, ${money(plan.monthlySaving, 0)} a month` : model.trainer.draft ? `Exploring: ${model.trainer.draft.name}` : 'Try a first car plan'} ›
         </button>
       </div>
     </div>

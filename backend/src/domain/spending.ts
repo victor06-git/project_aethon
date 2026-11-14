@@ -4,6 +4,7 @@ import { round2 } from './money';
 import { addDays } from './dates';
 import { lineIdOf } from './cashflow';
 import { CUT_GROUPS, type Basket, type Cashflow } from './trainer';
+import { countsTowardSpending, transactionFlow } from './transactionFlow';
 import type { Transaction } from './types';
 
 export type Period = 'last_30_days' | 'last_90_days' | 'this_month' | 'last_month';
@@ -15,7 +16,6 @@ export const PERIODS = Object.keys(PERIOD_LABEL) as Period[];
 const TOP_PAYEES = 5;
 const TOP_CATEGORIES = 3;
 const MIN_TERM = 3;
-const INVESTMENT = /^invest/i;
 // Share of income left over each month → a plain description of the user's style.
 const STYLES: { minPct: number; text: string }[] = [
   { minPct: 20, text: 'A saver: a good part of every pay stays with you' },
@@ -26,7 +26,7 @@ const STYLES: { minPct: number; text: string }[] = [
 
 export interface SpendingQuery {
   search: string; period: Period; from: string; to: string;
-  total: number; count: number;
+  total: number; count: number; refunds: number;
   payees: { label: string; amount: number }[];
 }
 
@@ -60,8 +60,6 @@ function matcherFor(search: string): (t: Transaction) => boolean {
   return (t) => terms.some((term) => wordsOf(t).includes(term));
 }
 
-const isSpending = (t: Transaction) => t.amount < 0 && !INVESTMENT.test(t.category);
-
 function totalsBy<T>(items: T[], key: (x: T) => string, amount: (x: T) => number): { label: string; amount: number }[] {
   const totals = new Map<string, number>();
   for (const item of items) totals.set(key(item), (totals.get(key(item)) ?? 0) + amount(item));
@@ -71,9 +69,10 @@ function totalsBy<T>(items: T[], key: (x: T) => string, amount: (x: T) => number
 export function querySpending(transactions: Transaction[], asOf: string, search: string, period: Period = 'last_30_days'): SpendingQuery {
   const { from, to } = rangeOf(period, asOf);
   const matches = matcherFor(search);
-  const found = transactions.filter((t) => isSpending(t) && t.date >= from && t.date <= to && matches(t));
+  const found = transactions.filter((t) => t.date >= from && t.date <= to && countsTowardSpending(t) && matches(t));
   return {
-    search, period, from, to, count: found.length,
+    search, period, from, to, count: found.filter((t) => t.amount < 0).length,
+    refunds: found.filter((t) => transactionFlow(t) === 'refund').length,
     total: round2(found.reduce((s, t) => s - t.amount, 0)),
     payees: totalsBy(found, (t) => t.merchant, (t) => -t.amount).slice(0, TOP_PAYEES)
   };
@@ -85,7 +84,7 @@ export function spendingProfile(cashflow: Cashflow, transactions: Transaction[],
   const everyday = cashflow.baskets.find((b) => b.basket === 'everyday')?.lines ?? [];
   const everydayIds = new Set(everyday.map((l) => l.id));
   const everydayBetween = (from: string, to: string) => round2(transactions
-    .filter((t) => isSpending(t) && t.date >= from && t.date <= to && everydayIds.has(lineIdOf(t.merchant)))
+    .filter((t) => t.date >= from && t.date <= to && countsTowardSpending(t) && everydayIds.has(lineIdOf(t.merchant)))
     .reduce((s, t) => s - t.amount, 0));
   return {
     style: STYLES.find((s) => savingRatePct >= s.minPct)!.text,

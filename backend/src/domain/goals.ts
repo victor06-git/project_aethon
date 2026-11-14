@@ -35,6 +35,7 @@ export function newGoal(kind: GoalKind, name: string, price?: number, months = D
 
 /** A change the user wants to try on the current goal. */
 export interface WhatIf {
+  name?: string;                            // change the public purchase description
   months?: number;                          // "in 18 months"
   addMonths?: number;                       // "wait 3 more months"
   price?: number;
@@ -64,6 +65,10 @@ function nextLoan(goal: GoalDraft, change: WhatIf['loan']): LoanTerms | null {
 }
 
 export function applyWhatIf(goal: GoalDraft, change: WhatIf): GoalDraft {
+  if (change.name && change.name.toLowerCase() !== goal.name.toLowerCase()) {
+    const updated = newGoal(goal.kind, change.name, goal.priceSource === 'user' ? goal.price : undefined, goal.months, goal.note);
+    goal = { ...updated, cuts: goal.cuts, loan: goal.loan?.rateSource === 'user' ? goal.loan : null };
+  }
   // A cut of 0% removes that cut (a slider moved back to the start).
   const others = change.cut ? goal.cuts.filter((c) => c.group !== change.cut!.group) : goal.cuts;
   const cuts = change.keepSpending ? [] : change.cut && change.cut.pct > 0 ? [...others, change.cut] : others;
@@ -74,7 +79,7 @@ export function applyWhatIf(goal: GoalDraft, change: WhatIf): GoalDraft {
     ...goal, cuts, running,
     months: clamp(Math.round(change.months ?? goal.months + (change.addMonths ?? 0)), 1, LIMITS.months),
     loan: nextLoan(goal, change.loan),
-    ...(change.price ? { price: change.price, priceSource: 'user' as const } : {})
+    ...(change.price ? { price: change.price, priceSource: 'user' as const, selectedOptionUrl: undefined } : {})
   };
 }
 

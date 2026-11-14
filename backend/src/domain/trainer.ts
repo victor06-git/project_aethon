@@ -28,8 +28,12 @@ export interface WeeklySafe { week: number; perDay: number; days: number; until:
 
 export interface Cashflow {
   asOf: string;
+  periodFrom: string;
   periodDays: number;        // how much history the averages use
   income: number;            // per month
+  transferReserve: number;   // scheduled sweeps out of observed accounts per month
+  investmentMonthly: number; // historical net investment contributions per month
+  assumptions: string[];
   baskets: BasketTotal[];    // the three baskets: regular, irregular, everyday
   oneOffs: CashLine[];
   free: number;              // income minus the three baskets: what is left each month
@@ -65,7 +69,7 @@ export interface Benchmark {
 }
 
 /** A concrete option found on the web for the goal, with where it was found. */
-export interface GoalOption { name: string; price: number; url: string }
+export interface GoalOption { name: string; price: number; url: string; evidence?: Source; conditions?: string }
 
 /** A structured answer from web research: the fields found, and which sources back each field. */
 export interface Extraction {
@@ -85,6 +89,7 @@ export interface GoalDraft {
   loan: LoanTerms | null;
   benchmarks: Benchmark[];
   options: GoalOption[];       // current options found by research
+  selectedOptionUrl?: string;  // the listing whose price the user chose to use
   confirmed: boolean;          // the user confirmed the brief; nothing is simulated before that
   note: string;                // the user's circumstances and priorities, in their words
 }
@@ -108,7 +113,12 @@ export interface GoalScenario {
 // ---- Agreed plan ----
 
 export type PlanStatus = 'on_track' | 'at_risk' | 'off_track';
-export interface PlanCheck { checkedOn: string; status: PlanStatus; changes: string[] }
+export interface PlanCheck {
+  checkedOn: string;
+  status: PlanStatus;
+  changes: string[];
+  proposedGoal?: GoalDraft; // verified market change, pending the user's choice
+}
 
 /** What the user approved the trainer to keep an eye on. */
 export interface Monitoring { prices: boolean; conditions: boolean; spending: boolean }

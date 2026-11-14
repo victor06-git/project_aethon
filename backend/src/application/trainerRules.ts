@@ -52,7 +52,7 @@ const CUT_WORDS: [string, RegExp][] = [
 ];
 
 function monthsIn(q: string): number | undefined {
-  const m = q.match(/\bin (\d+|a|one|two|three) (months?|years?)\b/);
+  const m = q.match(/\b(?:in|within|over) (\d+|a|one|two|three) (months?|years?)\b/);
   if (m) {
     const n = { a: 1, one: 1, two: 2, three: 3 }[m[1]] ?? Number(m[1]);
     return m[2].startsWith('year') ? n * 12 : n;
@@ -61,16 +61,48 @@ function monthsIn(q: string): number | undefined {
   return /next year|a year from now/.test(q) ? 12 : undefined;
 }
 
-function goalArgs(q: string): Record<string, unknown> {
-  const isCar = /\bcar\b|\bauto\b|vehicle/.test(q);
-  const carName = /used|second[- ]hand/.test(q) ? 'used car' : /\bnew\b/.test(q) ? 'new car' : /electric|\bev\b/.test(q) ? 'electric car' : 'car';
-  const named = q.match(/(?:buy|afford|purchase|save (?:up )?for)\s+(?:an?\s+|the\s+|my\s+)?(?:new\s+)?(?:€?\s?[\d ,.]+k?\s*(?:€|euros?|eur)?\s+)?([a-zäöå][a-zäöå -]{1,30}?)(?=\s+(?:next|in|by|for|within|this|costing|that)\b|[?.!,]|$)/);
+const CAR_TARGET = /\b(?:cars?|auto|vehicle|hatchback|estate|suv|sedan|toyota|volkswagen|volvo|skoda|škoda|hyundai|kia|nissan|honda|tesla|mazda|ford|peugeot|renault|audi|bmw|mercedes|opel|seat|dacia)\b/i;
+const BUY = /\b(?:buy(?:ing)?|afford|purchase|save (?:up )?for)\b/i;
+const RESEARCH = /\b(?:look[ -]?up|research|check (?:current|real|live|listing|market|prices?)|real (?:price|cost)|live (?:prices?|listings?)|(?:find|show|compare) (?:me )?(?:an?|some|the|current|used|new|available)|options|offers|listings)\b/i;
+
+function purchaseName(text: string, verb: string): string | undefined {
+  const match = text.match(new RegExp(`\\b(?:${verb})\\s+(?:an?\\s+|the\\s+|my\\s+)?(?:€\\s*[\\d., ]+k?\\s+)?([\\p{L}\\d][\\p{L}\\d '’&–-]{0,59}?)(?=\\s+(?:next|in|by|for|within|this|over|under|with|costing|that|to commute|near)\\b|[?.!,;€]|$)`, 'iu'));
+  const name = match?.[1].trim();
+  return name && !/^(?:it|this|that|one|another|listings?|options?|prices?|running costs?)$/i.test(name) ? name : undefined;
+}
+
+function goalArgs(text: string): Record<string, unknown> {
+  const q = text.toLowerCase();
+  const named = purchaseName(text, 'buy(?:ing)?|afford|purchase|save (?:up )?for');
+  const isCar = CAR_TARGET.test(named ?? q);
   return {
     kind: isCar ? 'car' : 'purchase',
-    name: isCar ? carName : named?.[1].trim() || 'purchase',
+    name: named ?? (isCar ? 'car' : 'purchase'),
     ...(money(q) !== undefined ? { price: money(q) } : {}),
     ...(monthsIn(q) !== undefined ? { months: monthsIn(q) } : {})
   };
+}
+
+export function confirmsBrief(text: string): boolean {
+  return /^(?:yes|yep|yeah|correct|right|ok(?:ay)?|confirm(?:ed)?|exactly|looks good|sounds good|that(?:'s| is) right)(?:,? (?:that(?:'s| is) right|please|confirm (?:it|the brief)|that looks right))?[.!]?$/i.test(text.trim())
+    || /^confirm (?:it|the brief|this brief)[.!]?$/i.test(text.trim());
+}
+
+export function approvesPlan(text: string): boolean {
+  return /^(?:yes,?\s+)?(?:agree(?: to)? (?:this|the) plan|save (?:this|the|my) plan|i (?:agree(?: to this plan)?|approve(?: this plan)?)|let'?s (?:do (?:it|this)|go with this plan)|go with this plan)[.!]?$/i.test(text.trim());
+}
+
+export function approvesRecheck(text: string): boolean {
+  return /^(?:yes,?\s+)?(?:please )?(?:re-?check it for me|you may re-?check|keep an eye on\b.+|monitor\b.+|watch\b.+)[.!]?$/i.test(text.trim()) && !/\b(?:don'?t|do not|exclude|except)\b|\?/i.test(text);
+}
+
+export function declinesRecheck(text: string): boolean {
+  return /\bi will ask myself\b|^don'?t (?:re-?check|monitor|watch)\b|^no\b.*re-?check/i.test(text.trim());
+}
+
+export function chosenPath(text: string): string | undefined {
+  const pick = text.trim().match(/^(?:i (?:choose|want to) )?(contribute less|reach the goal sooner|keep a larger buffer|reach the goal later)[.!]?$/i)?.[1].toLowerCase();
+  return pick ? { c: 'less', k: 'buffer' }[pick[0]] ?? (pick.endsWith('sooner') ? 'sooner' : 'later') : undefined;
 }
 
 /** The change a "what if" asks for, as what_if arguments. Empty when the text asks for none. */
@@ -132,29 +164,42 @@ export async function ruleCall(text: string, ctx: RuleContext, rules: QuestionCl
   const line = basket ? targetLine(q, ctx.lines) : undefined;
   if (basket && line) return call('reclassify', { line_id: line.id, basket });
 
-  if (ctx.hasPlan && /re-?check it for me|\byes\b[^.]*re-?check|you may re-?check/.test(q)) return call('set_recheck_permission', { allow: true });
-  if (ctx.hasPlan && /i will ask myself|don'?t re-?check|\bno\b[^.]*re-?check/.test(q)) return call('set_recheck_permission', { allow: false });
-  if (ctx.pendingBrief && /^(yes|yep|yeah|correct|right|ok|okay|confirm(ed)?|exactly|looks good|sounds good|that'?s right)\b/.test(q.trim())) return call('confirm_brief');
-  const path = ctx.hasPlan && q.match(/^(contribute less|reach the goal sooner|keep a larger buffer|reach the goal later)\b/);
-  if (path) return call('choose_path', { id: { c: 'less', k: 'buffer' }[path[1][0]] ?? (path[1].endsWith('sooner') ? 'sooner' : 'later') });
-  if (/\bagree\b|let'?s do (it|this)|save (this|the) plan|go with (this|that)/.test(q)) return call('agree_plan');
+  if (ctx.hasPlan && declinesRecheck(text)) return call('set_recheck_permission', { allow: false });
+  if (ctx.hasPlan && approvesRecheck(text)) {
+    const scope = { prices: /\bprices?\b/.test(q), conditions: /\b(?:conditions?|loans?|insurance|rates?)\b/.test(q), spending: /\b(?:spending|cash ?flow)\b/.test(q) };
+    if (Object.values(scope).some(Boolean)) return call('set_monitoring', Object.fromEntries(Object.entries(scope).filter(([, value]) => value)));
+    if (q.includes('re-check') || q.includes('recheck')) return call('set_recheck_permission', { allow: true });
+  }
+  if (ctx.pendingBrief && confirmsBrief(text)) return call('confirm_brief');
+  const path = ctx.hasPlan && chosenPath(text);
+  if (path) return call('choose_path', { id: path });
+  if (approvesPlan(text)) return call('agree_plan');
   if (/re-?check|still on track|revisit/.test(q)) return call('recheck_plan');
   if (/other banks?|all (my )?(banks|accounts)|psd2/.test(q)) return call('set_multibank', { on: !/only|exclude|without|hide|remove/.test(q) });
 
-  if (/\b(buy|afford|purchase|save (up )?for)\b/.test(q) && !/\bwhat if\b/.test(q)) return call('simulate_goal', goalArgs(q));
   const change = whatIfArgs(q);
+  const rename = ctx.goal && purchaseName(text, 'switch to|change (?:it|the goal) to|make it|instead (?:buy|look for)|look for|find(?: me)?|what about');
+  if (rename && !/\b(?:months?|years?|loans?|spending)\b/i.test(rename) && (ctx.goal?.kind === 'purchase' || CAR_TARGET.test(rename))) {
+    return call('what_if', { ...change, name: rename });
+  }
+  if (BUY.test(q) && !/\bwhat if\b/.test(q)) return call('simulate_goal', goalArgs(text));
   if (Object.keys(change).length) return call('what_if', change);
 
-  if (ctx.goal && /look ?up|research|real (price|cost)|options|offers|find (me )?(a|some)/.test(q)) return call('research_goal');
+  if (ctx.goal && RESEARCH.test(q)) return call('research_goal');
   const option = ctx.goal && q.match(/^use option (\d+)/);
   if (option) return call('choose_option', { index: Number(option[1]) - 1 });
-  if (/look ?up|research|benchmark|on average|average|typical|compare/.test(q)) return call('search_web', { query: `${text.trim()} Finland` });
   if (/safe(ly)?( to)? spend|(what|how much) can i spend/.test(q)) return call('get_safe_to_spend');
   if (/kind of spender|spending (style|habits|profile)|am i (a )?(good |big )?(saver|spender)/.test(q)) return call('get_spending_profile');
-  const spending = spendingArgs(q);
+  const publicBenchmark = /\b(?:benchmark|on average|average|typical)\b/i.test(q) && !/\b(?:i|my|me)\b/i.test(q);
+  const spending = publicBenchmark ? undefined : spendingArgs(q);
   if (spending) return call('query_spending', spending);
   if (/where (did|does|is|has) (all )?my money|baskets?|breakdown|cash ?flow|overview/.test(q)) return call('get_baskets');
   if (/\b(my|the) plan\b/.test(q)) return call('get_plan');
+  if (RESEARCH.test(q) || /benchmark|on average|average|typical|compare/.test(q)) {
+    // General web search has no need for details about the customer's own accounts.
+    if (/\b(?:iban|account number|i earn|i get paid|my (?:income|salary|balance|transactions?|accounts?|budget|address))\b|\b\S+@\S+\.\S+\b/i.test(text)) return null;
+    return call('search_web', { query: `${text.trim()} Finland` });
+  }
 
   // The coach's own questions (scenarios in the 3D City, the rent letter).
   const route = await rules.classify(text);

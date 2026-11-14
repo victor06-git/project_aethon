@@ -8,7 +8,7 @@ export const MCC_LABEL: Record<string, string> = {
   5812: 'Restaurant', 5813: 'Bar', 5814: 'Fast food and delivery',
   4111: 'Public transport', 4121: 'Taxi', 5541: 'Fuel station', 5542: 'Fuel station', 7523: 'Parking',
   7832: 'Cinema', 7922: 'Theatre and events', 7941: 'Sports club', 7991: 'Attraction', 7996: 'Amusement park', 7999: 'Leisure',
-  5912: 'Pharmacy', 8011: 'Doctor', 8099: 'Health service',
+  5912: 'Pharmacy', 8011: 'Doctor', 8021: 'Dentist', 8099: 'Health service',
   5200: 'Home supplies', 5251: 'Hardware store', 5712: 'Furniture', 5732: 'Electronics',
   5651: 'Clothing', 5691: 'Clothing', 5941: 'Sports shop', 5999: 'Shop',
   4511: 'Airline', 4722: 'Travel agency', 7011: 'Hotel'
@@ -16,12 +16,13 @@ export const MCC_LABEL: Record<string, string> = {
 
 export const TYPE_LABEL: Record<string, string> = {
   salary: 'Salary', housing_payment: 'Housing payment', utilities_payment: 'Utilities',
-  investment_deposit: 'Investment deposit', investment_withdrawal: 'Investment withdrawal'
+  investment_deposit: 'Investment deposit', investment_withdrawal: 'Investment withdrawal',
+  salary_sweep: 'Salary sweep'
 };
 
 // Coach keys used by the scenarios and facts.
 export const COACH_KEY_BY_MCC: Record<string, string> = {
-  4121: 'taxi', 5814: 'food_delivery',
+  4121: 'taxi', 5812: 'restaurants', 5813: 'restaurants', 5814: 'food_delivery',
   7832: 'leisure', 7922: 'leisure', 7941: 'leisure', 7991: 'leisure', 7996: 'leisure', 7999: 'leisure',
   5411: 'groceries', 5422: 'groceries', 5451: 'groceries', 5499: 'groceries'
 };
@@ -44,6 +45,7 @@ export function merchantLabel({ mcc, type, category }: Row): string {
 export function coachKey({ mcc, type, category }: Row): string {
   if (mcc && COACH_KEY_BY_MCC[mcc]) return COACH_KEY_BY_MCC[mcc];
   if (type === 'housing_payment') return 'housing';
+  if (type === 'utilities_payment') return 'utilities';
   return String(category || 'other').toLowerCase().replace(/[^a-z]+/g, '_');
 }
 

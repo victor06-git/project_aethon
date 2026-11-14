@@ -113,6 +113,7 @@ function goal(v: unknown): GoalDraft {
     running: list(o.running, 'goal.running', MAX.items, costItem), cuts: list(o.cuts, 'goal.cuts', MAX.items, cut),
     loan: loan(o.loan), benchmarks: list(o.benchmarks, 'goal.benchmarks', MAX.items, benchmark),
     options: o.options === undefined ? [] : list(o.options, 'goal.options', MAX.items, option),
+    ...(o.selectedOptionUrl === undefined ? {} : { selectedOptionUrl: httpUrl(o.selectedOptionUrl, 'goal.selectedOptionUrl') }),
     confirmed: flag(o.confirmed, 'goal.confirmed'),
     note: o.note === undefined ? '' : text(o.note, 'goal.note', MAX.note, false)
   };
@@ -120,7 +121,14 @@ function goal(v: unknown): GoalDraft {
 
 function option(v: unknown): GoalOption {
   const o = obj(v, 'option');
-  return { name: text(o.name, 'option.name', MAX.text), price: num(o.price, 'option.price', 0, LIMITS.price), url: httpUrl(o.url, 'option.url') };
+  const url = httpUrl(o.url, 'option.url');
+  const evidence = o.evidence === undefined ? undefined : source(o.evidence);
+  if (evidence && evidence.url !== url) fail('option.evidence.url');
+  return {
+    name: text(o.name, 'option.name', MAX.text), price: num(o.price, 'option.price', 0, LIMITS.price), url,
+    ...(evidence ? { evidence } : {}),
+    ...(o.conditions === undefined ? {} : { conditions: text(o.conditions, 'option.conditions', 240) })
+  };
 }
 
 function flag(v: unknown, name: string): boolean {
@@ -138,7 +146,8 @@ function planCheck(v: unknown): PlanCheck | null {
   const o = obj(v, 'plan.lastCheck');
   return {
     checkedOn: isoDate(o.checkedOn, 'lastCheck.checkedOn'), status: oneOf(o.status, 'lastCheck.status', STATUSES),
-    changes: list(o.changes, 'lastCheck.changes', MAX.changes, (c) => text(c, 'lastCheck.change', MAX.text))
+    changes: list(o.changes, 'lastCheck.changes', MAX.changes, (c) => text(c, 'lastCheck.change', MAX.text)),
+    ...(o.proposedGoal === undefined ? {} : { proposedGoal: goal(o.proposedGoal) })
   };
 }
 

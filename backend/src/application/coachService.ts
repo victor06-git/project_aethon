@@ -2,6 +2,9 @@
 //   question → QuestionClassifier (model, optional) → rules fallback → answer built here
 // The model only classifies. Every figure comes from the engine or the transactions.
 import { round2 } from '../domain/money';
+import { buildCashflow } from '../domain/cashflow';
+import { countsTowardSpending } from '../domain/transactionFlow';
+import { querySpending } from '../domain/spending';
 import { INTENTS, isSupported } from '../domain/intents';
 import { httpError, type Answer, type Route } from '../domain/types';
 import type { ForecastEngine, QuestionClassifier, TransactionRepository } from './ports';
@@ -45,24 +48,27 @@ export function createCoachService({ engine, transactions, rules, model = null, 
     return transactions.list().filter((t) => t.date > from && t.date <= asOf);
   }
 
+  function safeToSpend() {
+    const safe = buildCashflow({ transactions: transactions.list(), accounts: transactions.accounts(), asOf: transactions.asOf() }).safe;
+    return { amount: safe.week, until: safe.until };
+  }
+
   function answer({ intent, id }: Route): Answer {
     if (intent === 'clarify' || !isSupported(intent, id)) {
       return { type: 'clarify', text: "I didn't quite get that. Try one of these:", examples: engine.suggestions().map((s) => s.text) };
     }
     if (intent === 'fact' && id === 'safe_to_spend') {
-      const s = engine.safeToSpend();
-      return { type: 'fact', text: `Based on this month's necessary expenses and your balance, you can safely spend up to €${s.amount} until ${s.until}.`, figure: `€${s.amount}` };
+      const s = safeToSpend();
+      return { type: 'fact', text: `Based on the statement balance and estimated bills, you could spend about €${s.amount} over the next week. The estimated next payday is ${s.until}.`, figure: `€${s.amount}` };
     }
     if (intent === 'fact' && id === 'taxi_total') {
-      const trips = lastDays(30).filter((t) => t.coachKey === 'taxi' && t.amount < 0);
-      const total = round2(trips.reduce((s, t) => s - t.amount, 0));
-      return { type: 'fact', text: `You took ${trips.length} taxi trip${trips.length === 1 ? '' : 's'} in the last 30 days.`, figure: `€${total.toFixed(2)}` };
+      const { count, total } = querySpending(transactions.list(), transactions.asOf(), 'taxi');
+      return { type: 'fact', text: `You made ${count} taxi payment${count === 1 ? '' : 's'} in the last 30 days.`, figure: `€${total.toFixed(2)}` };
     }
     if (intent === 'fact' && id === 'breakdown') {
-      const totals: Record<string, number> = {};
-      // Moving money into your own investments is saving, not spending.
-      for (const t of lastDays(30)) if (t.amount < 0 && !/^invest/i.test(t.category)) totals[t.category] = (totals[t.category] ?? 0) - t.amount;
-      const rows = Object.entries(totals).map(([label, amount]) => ({ label, amount: round2(amount) })).sort((a, b) => b.amount - a.amount);
+      const totals = new Map<string, number>();
+      for (const t of lastDays(30)) if (countsTowardSpending(t)) totals.set(t.category, (totals.get(t.category) ?? 0) - t.amount);
+      const rows = [...totals].map(([label, amount]) => ({ label, amount: round2(amount) })).sort((a, b) => b.amount - a.amount);
       return { type: 'fact', text: 'Your spending in the last 30 days, by category:', rows };
     }
     if (intent === 'forecast') {
@@ -84,7 +90,7 @@ export function createCoachService({ engine, transactions, rules, model = null, 
     /** The answer for an already decided route (the trainer routes with its own tools). */
     answerRoute: (r: Route): Answer => answer(r),
     suggestions: () => engine.suggestions(),
-    safeToSpend: () => engine.safeToSpend(),
+    safeToSpend,
     expenses: () => engine.expenses(),
     listScenarios: () => engine.listScenarios(),
     getScenario: (id: string) => engine.getScenario(id),

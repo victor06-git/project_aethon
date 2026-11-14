@@ -3,7 +3,8 @@ import type { FormEvent } from 'react';
 import { useData, useModel } from '../../../models/hooks';
 import { useNav } from '../../../controllers/nav';
 import { money, shortDate } from '../../format';
-import { Btn, Field, List, Loading, Row } from '../../components';
+import { Btn, Card, Field, List, Loading, Row } from '../../components';
+import { fullDate } from '../../revi/TrainerCards';
 
 export const AuthScreen = () => (
   <div className="content">
@@ -111,8 +112,30 @@ export function NewPaymentScreen() {
   );
 }
 
-export function TransferScreen() {
+export function TransferScreen({ arg }: { arg: string | null }) {
   const submit = useDemoSubmit('/api/transfers', 'Confirmation');
+  const model = useModel();
+  const nav = useNav();
+  const plan = arg === 'savings-plan' ? model.trainer.plan : null;
+  if (plan) {
+    return (
+      <div className="content">
+        <h1 className="title">Savings transfer preview</h1>
+        <Card padded>
+          <dl className="t-transfer">
+            <div><dt>Goal</dt><dd>{plan.goal.name}</dd></div>
+            <div><dt>Amount</dt><dd>{money(plan.monthlySaving)}</dd></div>
+            <div><dt>From</dt><dd>Current account</dd></div>
+            <div><dt>To</dt><dd>Savings account</dd></div>
+            <div><dt>Frequency</dt><dd>Monthly</dd></div>
+            <div><dt>Save until</dt><dd>{fullDate(plan.targetDate)}</dd></div>
+          </dl>
+        </Card>
+        <div className="warn">Simulation. Review how the transfer would look in S-mobiili.</div>
+        <Btn label="Confirm simulation" primary block onClick={() => nav.showModal('Simulation complete', 'Your savings plan is still saved on this device. No payment was scheduled or made.')} />
+      </div>
+    );
+  }
   return (
     <div className="content"><form onSubmit={submit}>
       <Field label="From account" name="from" options={['Current account · €812.34', 'Savings account · €3,400.00']} />
