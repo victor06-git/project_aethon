@@ -26,19 +26,35 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from .kaiku_agent import MODEL_NAME, Kaiku, Result, create_agent, load_transactions
+from .kaiku_agent import MODEL_NAME, Kaiku, Result, _load_env, create_agent, load_transactions
 
 _lock = threading.Lock()
 _agent: Kaiku | None = None
 
 
 def settings() -> dict:
+    _load_env()  # so KAIKU_MODEL / KAIKU_THINKING / KAIKU_* can live in the project .env
     return {
         "port": int(os.environ.get("KAIKU_PORT", "8765")),
         "model": os.environ.get("KAIKU_MODEL") or MODEL_NAME,
         "thinking": os.environ.get("KAIKU_THINKING"),
-        "dataset": os.environ.get("KAIKU_DATASET") or None,
+        "dataset": _dataset_path(),
+        "customer": os.environ.get("KAIKU_CUSTOMER_ID") or os.environ.get("REVI_CUSTOMER_ID") or "CUST00001",
     }
+
+
+def _dataset_path():
+    """KAIKU_DATASET, or the app's own data/tx_junction_transactions.csv when it exists.
+    Relative paths are tried against the project root and backend/, not only the cwd."""
+    import pathlib
+    root = pathlib.Path(__file__).resolve().parents[3]
+    raw = os.environ.get("KAIKU_DATASET")
+    cands = ([pathlib.Path(raw), root / raw, root / "backend" / raw] if raw
+             else [root / "data" / "tx_junction_transactions.csv"])
+    for c in cands:
+        if c.is_file():
+            return str(c)
+    return None
 
 
 def get_agent() -> Kaiku:
@@ -47,7 +63,8 @@ def get_agent() -> Kaiku:
     with _lock:
         if _agent is None:
             s = settings()
-            kwargs = {"model_name": s["model"], "transactions": load_transactions(s["dataset"])}
+            kwargs = {"model_name": s["model"],
+                      "transactions": load_transactions(s["dataset"], s["customer"])}
             if s["thinking"]:  # one level for both steps (some models reject "minimal")
                 kwargs["router_thinking"] = kwargs["answer_thinking"] = s["thinking"]
             _agent = create_agent(**kwargs)
@@ -119,6 +136,15 @@ def handle_question(question: str) -> tuple[int, dict]:
     if len(question) > 500:
         return 400, {"message": "Question is too long"}
     t0 = time.perf_counter()
+    try:  # mortgage-decision questions are answered by the local model: instant, no LLM calls
+        from .kaiku_mortgage import try_answer as mortgage_answer
+
+        a = mortgage_answer(question)
+        if a is not None:
+            print(f"[kaiku] mortgage {a['trace']['route']:<24} {a['trace']['seconds']:5.1f}s  {question[:60]!r}")
+            return 200, a
+    except Exception as e:  # noqa: BLE001 - a broken model must not block the normal coach
+        print(f"[kaiku] mortgage model failed, using the pipeline: {type(e).__name__}: {str(e)[:120]}")
     try:
         res = get_agent().ask(question)
     except Exception as e:  # noqa: BLE001 - the Node side falls back to local answers
@@ -149,8 +175,10 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         if self.path.rstrip("/") == "/kaiku/health":
             s = settings()
+            from .kaiku_mortgage import _find_dir
             self._send(200, {"ok": True, "model": s["model"],
-                             "data": s["dataset"] or "synthetic sample", "thinking": s["thinking"]})
+                             "data": s["dataset"] or "synthetic sample", "thinking": s["thinking"],
+                             "mortgage_model": str(_find_dir() or "not found")})
         else:
             self._send(404, {"message": "Not found"})
 
@@ -171,7 +199,8 @@ def main() -> None:
     server = ThreadingHTTPServer(("127.0.0.1", s["port"]), Handler)
     print(f"Kaiku service: http://localhost:{s['port']}/kaiku/messages")
     print(f"  model {s['model']} | thinking {s['thinking'] or 'default'} | "
-          f"data {s['dataset'] or 'synthetic sample'}")
+          f"data {s['dataset'] or 'synthetic sample'}"
+          + (f" | customer {s['customer']}" if s["dataset"] else ""))
     print("  point the app at it with REVI_KAIKU_URL=http://localhost:" + str(s["port"]))
     server.serve_forever()
 

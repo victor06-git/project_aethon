@@ -1,0 +1,80 @@
+{
+  "best_params": {
+    "logreg": {
+      "C": 0.14804819655184984,
+      "l1_ratio": 0.6717027045003738,
+      "scaler": "robust",
+      "corr_threshold": 0.9721292695839111,
+      "vif_threshold": 10.0
+    },
+    "random_forest": {
+      "n_estimators": 400,
+      "max_depth": 9,
+      "min_samples_leaf": 1,
+      "max_features": 0.22809461525606772,
+      "max_samples": 0.9399503150768073
+    },
+    "xgboost": {
+      "learning_rate": 0.022893919287046597,
+      "max_depth": 3,
+      "min_child_weight": 1.2600613741635753,
+      "subsample": 0.7998792163973398,
+      "colsample_bytree": 0.5863975290908463,
+      "reg_lambda": 0.0192527776724468,
+      "reg_alpha": 0.20287301712860945,
+      "gamma": 0.5273111215396442
+    },
+    "catboost": {
+      "learning_rate": 0.0850879105929517,
+      "depth": 5,
+      "l2_leaf_reg": 2.0268429355250586,
+      "rsm": 0.27157418795590765,
+      "subsample": 0.7173321691029869,
+      "bootstrap_type": "Bernoulli",
+      "min_data_in_leaf": 5
+    }
+  },
+  "timings": {
+    "logreg": {
+      "tune_seconds": 166.56617725800015,
+      "final_fit_seconds": 0.17155700500006787,
+      "n_trials": 60,
+      "tuning_auc": 0.8141716997411562,
+      "tuning_log_loss": 0.4447107079011665
+    },
+    "random_forest": {
+      "tune_seconds": 336.457368759,
+      "final_fit_seconds": 0.7941688429996248,
+      "n_trials": 40,
+      "tuning_auc": 0.8705241587575496,
+      "tuning_log_loss": 0.38741149802819264
+    },
+    "xgboost": {
+      "tune_seconds": 185.75614589899988,
+      "final_fit_seconds": 0.20002147000013792,
+      "n_trials": 60,
+      "tuning_auc": 0.9083261432269198,
+      "tuning_log_loss": 0.3203231356486187
+    },
+    "catboost": {
+      "tune_seconds": 229.39917914099988,
+      "final_fit_seconds": 0.15838696300033916,
+      "n_trials": 30,
+      "tuning_auc": 0.8906384814495254,
+      "tuning_log_loss": 0.35329723693285764
+    }
+  },
+  "ensemble_weights": {
+    "logreg": 0.0,
+    "random_forest": 0.0,
+    "xgboost": 1.0,
+    "catboost": 0.0
+  },
+  "n_dev": 160,
+  "n_holdout": 40,
+  "n_features": 84,
+  "holdout_starts": "2026-06-25 00:00:00",
+  "n_repeats": 5,
+  "n_splits": 5,
+  "fast": false
+}

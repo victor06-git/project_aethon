@@ -1,0 +1,89 @@
+feature,mean_abs_shap,direction,family
+residual_income_coverage,0.3912023,higher → rejection,affordability / liquidity ratios
+customer_age,0.22749488,higher → approval,customer & location
+collateral_shortfall_eur,0.21743305,higher → rejection,collateral (incl. additional)
+equity_coverage,0.21393004,higher → approval,affordability / liquidity ratios
+tx_salary_sweep_m,0.20306978,higher → rejection,"transactions (spend, balance, salary)"
+tx_balance_min,0.20135817,higher → rejection,"transactions (spend, balance, salary)"
+salary_coverage,0.11091459,higher → rejection,affordability / liquidity ratios
+tx_balance_last,0.09163914,higher → approval,"transactions (spend, balance, salary)"
+tx_housing_to_income,0.0906331,higher → approval,"transactions (spend, balance, salary)"
+lfinal_loan_to_value,0.0816219,mixed,final loan terms
+tx_savings_rate,0.08098855,higher → rejection,"transactions (spend, balance, salary)"
+tx_spend_utilities_m,0.0728309,higher → rejection,"transactions (spend, balance, salary)"
+collateral_coverage_total,0.06970857,higher → approval,collateral (incl. additional)
+tx_balance_mean,0.06701964,higher → rejection,"transactions (spend, balance, salary)"
+cash_need_coverage,0.065927014,higher → approval,affordability / liquidity ratios
+collateral_coverage_primary,0.050948925,higher → approval,collateral (incl. additional)
+tx_spend_home_tech_m,0.045923393,higher → approval,"transactions (spend, balance, salary)"
+collateral_total_value,0.044121075,higher → approval,collateral (incl. additional)
+price_vs_postal_salary,0.043991238,higher → approval,negotiation behaviour
+collateral_to_price,0.03654805,higher → approval,collateral (incl. additional)
+tx_discretionary_share,0.035782523,higher → rejection,"transactions (spend, balance, salary)"
+tx_balance_growth,0.034544818,higher → approval,"transactions (spend, balance, salary)"
+tx_spend_groceries_m,0.03137724,higher → approval,"transactions (spend, balance, salary)"
+tx_spend_transportation_m,0.031211182,higher → approval,"transactions (spend, balance, salary)"
+tx_balance_std,0.02985552,higher → approval,"transactions (spend, balance, salary)"
+tx_spend_travel_m,0.028366437,higher → approval,"transactions (spend, balance, salary)"
+final_requested_loan_eur,0.02799432,higher → approval,final loan terms
+debt_adjusted_income_coverage,0.02700907,higher → rejection,affordability / liquidity ratios
+tx_spend_lifestyle_m,0.02538436,higher → approval,"transactions (spend, balance, salary)"
+postal_city_02,0.023363499,higher → rejection,customer & location
+tx_spend_housing_m,0.021768415,higher → approval,"transactions (spend, balance, salary)"
+final_property_price_eur,0.01991163,higher → rejection,final loan terms
+expenses_to_price,0.019040402,higher → approval,recorded expenses
+property_type_detached_house,0.018644389,higher → rejection,customer & location
+final_collateral_value_eur,0.017921705,higher → rejection,final loan terms
+tx_salary_cv,0.014805332,higher → rejection,"transactions (spend, balance, salary)"
+final_equity_amount_eur,0.013618666,higher → rejection,final loan terms
+tx_spend_entertainment_m,0.012251629,higher → approval,"transactions (spend, balance, salary)"
+tx_salary_m,0.01203907,higher → rejection,"transactions (spend, balance, salary)"
+exp_transfer_tax,0.011749862,higher → approval,recorded expenses
+tx_spend_restaurants_m,0.011159251,higher → approval,"transactions (spend, balance, salary)"
+neg_additional_collateral_value,0.009994357,higher → approval,collateral (incl. additional)
+income_coverage,0.009633148,mixed,affordability / liquidity ratios
+postal_area3,0.009452044,higher → approval,customer & location
+loan_to_annual_income,0.009357439,higher → approval,affordability / liquidity ratios
+ctx_postal_salary_median,0.009244404,higher → rejection,customer & location
+neg_days_to_loan_calc,0.009118632,higher → approval,negotiation behaviour
+price_vs_first_property,0.0090528205,higher → rejection,negotiation behaviour
+exp_valuation_fee,0.008064518,higher → rejection,recorded expenses
+neg_first_property_price,0.0069815763,higher → approval,negotiation behaviour
+exp_total,0.006029384,higher → approval,recorded expenses
+ctx_postal_balance_median,0.0055540996,higher → rejection,customer & location
+neg_n_events,0.0054102032,higher → approval,negotiation behaviour
+tx_salary_median,0.0051626866,higher → rejection,"transactions (spend, balance, salary)"
+tx_consumption_m,0.0051349457,higher → rejection,"transactions (spend, balance, salary)"
+tx_n_m,0.004870152,higher → rejection,"transactions (spend, balance, salary)"
+exp_bank_fee,0.0045377784,higher → rejection,recorded expenses
+tx_living_cost_ex_housing_m,0.0042440067,mixed,"transactions (spend, balance, salary)"
+tx_n_merchants,0.00344284,higher → approval,"transactions (spend, balance, salary)"
+neg_days_active,0.002846048,higher → approval,negotiation behaviour
+tx_other_income_m,0.0025565238,higher → rejection,"transactions (spend, balance, salary)"
+neg_n_price_updates,0.0025500557,higher → approval,negotiation behaviour
+neg_n_expenses,0.0,none,negotiation behaviour
+neg_has_additional_collateral,0.0,none,collateral (incl. additional)
+neg_n_contacts,0.0,none,negotiation behaviour
+neg_n_properties,0.0,none,negotiation behaviour
+neg_n_documents,0.0,none,negotiation behaviour
+required_monthly_income_eur,0.0,none,final loan terms
+neg_n_valuations,0.0,none,collateral (incl. additional)
+neg_additional_collateral_requested,0.0,none,collateral (incl. additional)
+neg_max_property_price,0.0,none,negotiation behaviour
+neg_final_price_revision_pct,0.0,none,negotiation behaviour
+exp_renovation,0.0,none,recorded expenses
+exp_existing_loan,0.0,none,recorded expenses
+tx_salary_n,0.0,none,"transactions (spend, balance, salary)"
+tx_invest_deposit_m,0.0,none,"transactions (spend, balance, salary)"
+tx_invest_withdraw_m,0.0,none,"transactions (spend, balance, salary)"
+tx_spend_health_m,0.0,none,"transactions (spend, balance, salary)"
+exp_maintenance_fee,0.0,none,recorded expenses
+tx_salary_trend,0.0,none,"transactions (spend, balance, salary)"
+tx_negative_balance_share,0.0,none,"transactions (spend, balance, salary)"
+tx_income_m,0.0,none,"transactions (spend, balance, salary)"
+price_vs_max_considered,0.0,none,negotiation behaviour
+existing_loan_to_income,0.0,none,affordability / liquidity ratios
+property_type_terraced_house,0.0,none,customer & location
+property_type_apartment,0.0,none,customer & location
+postal_city_01,0.0,none,customer & location
+postal_city_00,0.0,none,customer & location

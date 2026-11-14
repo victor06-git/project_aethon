@@ -13,7 +13,7 @@ export function classifyByRules(question: string): Route {
   if (has('taxi')) return { intent: 'fact', id: 'taxi_total' };
   if (has('where') && has('money') && !has('basket')) return { intent: 'fact', id: 'breakdown' };
   if (has('food delivery', 'wolt', 'foodora', 'delivery') && has('stop', 'cut', 'less', 'reduce', 'no longer')) return { intent: 'forecast', id: 'stop_food' };
-  if (has('mortgage', 'interest rate', 'loan rate')) return { intent: 'forecast', id: 'mortgage_rate' };
+  if (has('interest rate', 'loan rate') || (has('mortgage') && has('rate', 'interest'))) return { intent: 'forecast', id: 'mortgage_rate' };
   if (has('cinema', 'theatre', 'theater', 'football') && has('stop', 'cut', 'less', 'skip')) return { intent: 'forecast', id: 'cut_leisure' };
   return { intent: 'clarify' };
 }

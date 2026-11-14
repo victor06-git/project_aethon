@@ -335,6 +335,10 @@ BASKETS = {
     "rent": 1, "electricity": 1, "gym": 1, "phone": 1,
     "repairs": 2, "health": 2,
     "groceries": 3, "food_delivery": 3, "coffee": 3, "taxi": 3, "dining_out": 3, "entertainment": 3,
+    # Junction dataset categories (lowercased); anything unknown defaults to basket 3
+    "housing": 1, "utilities": 1, "insurance": 1, "loan_payment": 1, "subscriptions": 1,
+    "healthcare": 2, "home_repair": 2, "home_maintenance": 2,
+    "restaurants": 3, "transportation": 3, "fuel": 3, "leisure": 3, "shopping": 3, "travel": 3,
 }
 _BASKET_NAMES = {1: "1_mandatory_regular", 2: "2_mandatory_irregular", 3: "3_everyday"}
 
@@ -371,13 +375,49 @@ def sample_transactions(months: int = 6, seed: int = 7, today: Optional[date] = 
     return df
 
 
-def load_transactions(path: Optional[str] = None) -> pd.DataFrame:
-    """Reads a CSV with the columns above, or returns the synthetic sample if no path is given."""
+def load_transactions(path: Optional[str] = None, customer_id: Optional[str] = None) -> pd.DataFrame:
+    """The synthetic sample (no path), a simple date/amount/category/merchant CSV, or the
+    S-Pankki Junction dataset (detected by its tx_date column; see the dataset README).
+
+    For the Junction file one customer is loaded (customer_id, e.g. CUST00001), streaming the
+    CSV in chunks so the 346 MB file never sits in memory. Outflows become the spending table
+    the coach already uses; salary and other inflows are kept aside per month in df.attrs
+    ["income_by_month"], so `spending_summary` can report income and what is left over.
+    """
     if not path:
         return sample_transactions()
-    df = pd.read_csv(path)
+    head = pd.read_csv(path, nrows=0, encoding="utf-8-sig")
+    if "tx_date" not in head.columns:
+        df = pd.read_csv(path)
+        df[COL_DATE] = pd.to_datetime(df[COL_DATE])
+        return df
+    use = [c for c in ("customer_id", "tx_date", "category", "tx_amount_eur", "merchant_id",
+                       "transaction_type") if c in head.columns]
+    if customer_id:
+        parts = [c[c["customer_id"] == customer_id]
+                 for c in pd.read_csv(path, encoding="utf-8-sig", usecols=use, chunksize=200_000)]
+        df = pd.concat(parts, ignore_index=True)
+        if not len(df):
+            raise ValueError(f"customer {customer_id!r} not found in {path}")
+    else:
+        df = pd.read_csv(path, encoding="utf-8-sig", usecols=use)
+    df = df.rename(columns={"tx_date": COL_DATE, "merchant_id": COL_MERCHANT})
     df[COL_DATE] = pd.to_datetime(df[COL_DATE])
-    return df
+    df[COL_CATEGORY] = (df["category"].astype(str).str.strip().str.lower()
+                        .str.replace(r"[\s/-]+", "_", regex=True))
+    if COL_MERCHANT not in df.columns:
+        df[COL_MERCHANT] = None
+    df[COL_MERCHANT] = df[COL_MERCHANT].fillna(df.get("transaction_type", "")).astype(str)
+    signed = df["tx_amount_eur"].astype(float)
+    income = df[signed > 0]
+    out = df[signed < 0].copy()
+    out[COL_AMOUNT] = -signed[signed < 0]
+    out = out[[COL_DATE, COL_AMOUNT, COL_CATEGORY, COL_MERCHANT]].reset_index(drop=True)
+    by_month = income.groupby(income[COL_DATE].dt.strftime("%Y-%m"))["tx_amount_eur"].sum()
+    out.attrs["income_by_month"] = {k: round(float(v), 2) for k, v in by_month.items()}
+    out.attrs["customer_id"] = customer_id
+    out.attrs["source"] = os.path.basename(str(path))
+    return out
 
 
 def _group_keys(d: pd.DataFrame, group_by: str):
@@ -425,6 +465,11 @@ def spending_summary(df: pd.DataFrame, category: Optional[str] = None, start_dat
         out["complete_months"] = len(full)
         out["avg_per_month_eur"] = round(avg, 2)
         out["per_year_eur"] = round(avg * 12, 2)
+        income = df.attrs.get("income_by_month")
+        if income and not category:  # with the Junction dataset: income and what is left over
+            inc = sum(income.get(str(m), 0.0) for m in full) / len(full)
+            out["avg_income_per_month_eur"] = round(inc, 2)
+            out["avg_left_over_per_month_eur"] = round(inc - avg, 2)
         if group_by != "month" and len(in_full):
             g2 = in_full.groupby(_group_keys(in_full, group_by))[COL_AMOUNT].sum() / len(full)
             g2 = g2[[k for k in g.index if k in g2.index]]
@@ -475,7 +520,6 @@ def router_prompt(categories: list[str], cutoff: str = MODEL_CUTOFF, today: Opti
         "question gives a quantity of the user's (a flat size, a household size), search for the "
         "per-unit or reference value ('average rent per square metre Helsinki 2026'), never for "
         "that specific size. `recent_days` only for rates, prices or news.\n"
-        "user needs (per m2, per month...); `recent_days` only for rates, prices or news.\n"
         f"- data/both: `category` = one of {categories} or null for all; `start_date`/`end_date` "
         "= YYYY-MM-DD resolved from today, null for the whole history; `group_by` = category, "
         "month, basket or merchant (month for averages, comparisons and what-if questions)."
@@ -494,8 +538,10 @@ ANSWER_PROMPT = (
     "missing, ask for it - but only quantities about the user (their flat size, household size). "
     "A market or reference figure the evidence lacks is never asked from the user: apply the "
     "NO_EVIDENCE rule instead.\n"
-    "- Arithmetic: never calculate yourself; write {{expression}} with plain numbers. Never put "
-    "[placeholders] inside the braces; write the placeholder text without braces instead.\n"
+    "- Arithmetic: never calculate yourself. Write the expression in double braces with plain "
+    "numbers, like {{A*B}} or {{abs(A-B*C)}} with the real numbers in place of the letters; the "
+    "app replaces it with the result. Use in the braces only numbers that appear in the "
+    "QUESTION, WEB or DATA, never a result you computed yourself.\n"
     "numbers, like {{A*B}} or {{abs(A-B*C)}} with the real numbers in place of the letters; the "
     "app replaces it with the result. Use in the braces only numbers that appear in the "
     "QUESTION, WEB or DATA, never a result you computed yourself.\n"
@@ -515,7 +561,8 @@ DOC_PROMPT = (
     "Prefer sources marked OFFICIAL. Use double quotes only for text copied from a source.\n"
     "- Do not write [WEB n] tags, URLs or a source list inside the document. After the signature "
     "add one last line with the sources you used, like: USED: 1, 3\n"
-    "- Arithmetic: never calculate yourself; write {{expression}} with plain numbers.\n"
+    "- Arithmetic: never calculate yourself; write {{expression}} with plain numbers. Never put "
+    "[placeholders] inside the braces; write the placeholder text without braces instead.\n"
     "- If the evidence does not support the request, reply NO_EVIDENCE followed by one sentence "
     "in the user's language.\n"
     "- Write in the user's language."

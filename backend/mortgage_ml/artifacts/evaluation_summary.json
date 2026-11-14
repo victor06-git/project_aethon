@@ -1,0 +1,12 @@
+{
+  "best_model": "xgboost",
+  "runner_up": "catboost",
+  "threshold": 0.25,
+  "cv_auc_mean": 0.8929142857142857,
+  "cv_auc_std": 0.05318889889604607,
+  "holdout_auc": 0.8422619047619049,
+  "holdout_auc_ci": [
+    0.6547619047619048,
+    0.988095238095238
+  ]
+}

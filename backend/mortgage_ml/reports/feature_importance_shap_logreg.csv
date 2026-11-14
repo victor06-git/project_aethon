@@ -1,0 +1,50 @@
+feature,mean_abs_shap,direction,family
+tx_housing_to_income,0.6942660711724741,higher → approval,"transactions (spend, balance, salary)"
+customer_age,0.36651798036267386,higher → approval,customer & location
+salary_coverage,0.2012874109628781,higher → rejection,affordability / liquidity ratios
+exp_bank_fee,0.1621583155367996,higher → rejection,recorded expenses
+collateral_coverage_total,0.16089183633839427,higher → approval,collateral (incl. additional)
+collateral_shortfall_eur,0.15478823174589834,higher → rejection,collateral (incl. additional)
+tx_spend_lifestyle_m,0.14191181750555582,higher → approval,"transactions (spend, balance, salary)"
+exp_transfer_tax,0.11634906472669808,higher → approval,recorded expenses
+tx_balance_min,0.10847223244273527,higher → rejection,"transactions (spend, balance, salary)"
+neg_additional_collateral_requested,0.09757955217173737,higher → rejection,collateral (incl. additional)
+tx_spend_health_m,0.024736410490110595,higher → approval,"transactions (spend, balance, salary)"
+tx_salary_trend,0.003229550587599882,higher → approval,"transactions (spend, balance, salary)"
+lfinal_loan_to_value,0.0,none,final loan terms
+neg_n_properties,0.0,none,negotiation behaviour
+neg_days_active,0.0,none,negotiation behaviour
+neg_n_documents,0.0,none,negotiation behaviour
+neg_n_contacts,0.0,none,negotiation behaviour
+exp_maintenance_fee,0.0,none,recorded expenses
+exp_valuation_fee,0.0,none,recorded expenses
+exp_existing_loan,0.0,none,recorded expenses
+exp_renovation,0.0,none,recorded expenses
+neg_n_expenses,0.0,none,negotiation behaviour
+neg_n_price_updates,0.0,none,negotiation behaviour
+neg_first_property_price,0.0,none,negotiation behaviour
+neg_final_price_revision_pct,0.0,none,negotiation behaviour
+tx_spend_home_tech_m,0.0,none,"transactions (spend, balance, salary)"
+tx_spend_entertainment_m,0.0,none,"transactions (spend, balance, salary)"
+tx_spend_travel_m,0.0,none,"transactions (spend, balance, salary)"
+tx_other_income_m,0.0,none,"transactions (spend, balance, salary)"
+tx_spend_utilities_m,0.0,none,"transactions (spend, balance, salary)"
+tx_spend_transportation_m,0.0,none,"transactions (spend, balance, salary)"
+tx_spend_groceries_m,0.0,none,"transactions (spend, balance, salary)"
+tx_spend_restaurants_m,0.0,none,"transactions (spend, balance, salary)"
+tx_salary_cv,0.0,none,"transactions (spend, balance, salary)"
+tx_salary_n,0.0,none,"transactions (spend, balance, salary)"
+tx_invest_deposit_m,0.0,none,"transactions (spend, balance, salary)"
+tx_invest_withdraw_m,0.0,none,"transactions (spend, balance, salary)"
+tx_n_merchants,0.0,none,"transactions (spend, balance, salary)"
+tx_negative_balance_share,0.0,none,"transactions (spend, balance, salary)"
+ctx_postal_balance_median,0.0,none,customer & location
+tx_balance_growth,0.0,none,"transactions (spend, balance, salary)"
+collateral_to_price,0.0,none,collateral (incl. additional)
+cash_need_coverage,0.0,none,affordability / liquidity ratios
+price_vs_first_property,0.0,none,negotiation behaviour
+property_type_detached_house,0.0,none,customer & location
+property_type_terraced_house,0.0,none,customer & location
+postal_city_01,0.0,none,customer & location
+postal_city_02,0.0,none,customer & location
+postal_area3,0.0,none,customer & location
