@@ -33,12 +33,13 @@ export const config = {
     // auto: the S-Pankki CSV if the file exists, otherwise demo fixtures.
     source: (env.REVI_DATA_SOURCE || 'auto').toLowerCase(),
     file: resolve(env.REVI_DATASET || 'data/tx_junction_transactions.csv'),
-    customerId: env.REVI_CUSTOMER_ID || 'CUST00001'
+    customerId: env.REVI_CUSTOMER_ID || 'CUST00001',
+    encoded: env.REVI_DATASET_GZIP_BASE64 || ''
   },
   provider,
   gemini: {
     apiKey,
-    model: env.REVI_LLM_MODEL || 'gemini-2.5-flash',
+    model: env.REVI_LLM_MODEL || 'gemini-3.8-flash',
     baseUrl: env.REVI_GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com',
     timeoutMs: Number(env.REVI_LLM_TIMEOUT_MS) || 8000,
     // The trainer agent makes several calls per answer (tools, then text), so it gets longer.

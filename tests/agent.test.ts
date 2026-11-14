@@ -149,7 +149,7 @@ test('questions about my own data', async () => {
   assert.match(where.text, /€2,850/);
 
   const taxis = (await say(app, 'How much did I spend on taxis last month?')).answer;
-  assert.deepEqual([taxis.figure, taxis.rows[0].label], ['€16', 'Bolt']);
+  assert.deepEqual([taxis.figure, taxis.rows[0].label], ['€16.40', 'Bolt']);
   assert.match(taxis.text, /last month/);
 
   const kind = (await say(app, 'What kind of spender am I?')).answer;
@@ -274,7 +274,7 @@ test('an agreed plan is set aside, and re-checked when spending changes', async 
   assert.deepEqual(r.state.plan.monitor, { prices: true, conditions: true, spending: true });
   const same = await act(app, 'recheck_plan', {}, r.state);
   assert.equal(same.state.plan.lastCheck.status, 'on_track');
-  assert.match(same.state.plan.lastCheck.changes[0], /Nothing has changed/);
+  assert.match(same.state.plan.lastCheck.changes[0], /No change was verified/);
 
   const dentistMonthly = { ...r.state, corrections: [{ lineId: 'hammasl-k-ri-hymy', as: 'regular' }] };
   const worse = await say(app, 'Re-check my plan', dentistMonthly);
@@ -332,49 +332,65 @@ const CAR_SOURCE = {
   title: 'Used cars in Finland', url: 'https://www.example.fi/cars', published: '2026-10-01',
   snippet: 'The average price of a used car sold in Finland was 12 500 euros in 2026.'
 };
+const LISTING_SOURCE = {
+  title: 'Toyota Corolla 2019', url: 'https://www.example.fi/corolla', published: '2026-10-01',
+  snippet: 'Toyota Corolla 2019. Cash price €13,900. Includes winter tyres.'
+};
+const INSURANCE_SOURCE = {
+  title: 'Car insurance', url: 'https://www.example.fi/insurance', published: '2026-10-01',
+  snippet: 'Auto insurance costs 720 €/vuosi on average.'
+};
 
 const CAR_MARKET = {
   content: {
     typical_price_eur: 12500,
-    options: [{ name: 'Toyota Corolla 2019', price_eur: 13900 }, { name: 'Skoda Octavia 2018', price_eur: 11200 }, { name: 'No price' }]
+    options: [
+      { name: 'Toyota Corolla 2019', price_eur: 13900, conditions: 'Includes winter tyres.' },
+      { name: 'Skoda Octavia 2018', price_eur: 11200 }, { name: 'No price' }
+    ]
   },
   grounding: [
     { field: 'typical_price_eur', confidence: 'high', urls: [CAR_SOURCE.url] },
-    { field: 'options[0].price_eur', confidence: 'medium', urls: ['https://www.example.fi/corolla'] },
+    { field: 'options[0].price_eur', confidence: 'medium', urls: [LISTING_SOURCE.url] },
     { field: 'options[1]', confidence: 'low', urls: ['https://www.example.fi/octavia'] }
   ],
-  sources: [CAR_SOURCE]
+  sources: [CAR_SOURCE, LISTING_SOURCE]
 };
 const CAR_COSTS = {
   content: { insurance_eur_per_year: 720, fuel_eur_per_year: 1500, maintenance_eur_per_year: 99999999, tax_eur_per_year: 300 },
   grounding: [{ field: 'insurance_eur_per_year', confidence: 'high', urls: ['https://www.example.fi/insurance'] }, { field: 'tax_eur_per_year', confidence: 'low', urls: ['https://www.example.fi/tax'] }],
-  sources: [{ title: 'Running a car', url: 'https://www.example.fi/fuel', published: '2026-09-01', snippet: 'A typical driver spends 1 500 euros a year on fuel.' }]
+  sources: [INSURANCE_SOURCE, { title: 'Running a car', url: 'https://www.example.fi/fuel', published: '2026-09-01', snippet: 'A typical driver spends 1 500 euros a year on fuel.' }]
 };
 
 test('goal research with Exa: options, costs beyond the price, and a source for every figure used', async () => {
   const logs: string[] = [];
-  const research = fakeResearch({ 'for sale': CAR_MARKET, 'yearly cost': CAR_COSTS, 'loan': new Error('Exa HTTP 500') });
+  const research = fakeResearch({ 'for sale': CAR_MARKET, 'seller listings': CAR_MARKET, 'yearly cost': CAR_COSTS, 'loan': new Error('Exa HTTP 500') });
   const app = createContainer({ research, log: (m) => { logs.push(m); } });
   const car = await confirmed(app, 'Could I buy a car next year?');
   const r = await say(app, 'Look up real prices', car.state);
   assert.equal(r.answer.type, 'research');
-  assert.equal(research.queries.length, 3, 'options, running costs, financing');
-  assert.match(research.queries[0], /car for sale in Finland 2026/);
+  assert.equal(research.queries.length, 4, 'market benchmarks, individual listings, running costs and financing');
+  assert.ok(research.queries[0].includes(`car for sale in Finland ${new Date().getUTCFullYear()}`));
 
   const goal = r.state.draft;
   assert.deepEqual([goal.price, goal.priceSource], [12500, 'research']);
-  assert.deepEqual(goal.options, [{ name: 'Toyota Corolla 2019', price: 13900, url: 'https://www.example.fi/corolla' }], 'an option without a confident source is dropped');
+  assert.deepEqual(goal.options, [{ name: 'Toyota Corolla 2019', price: 13900, url: LISTING_SOURCE.url, evidence: LISTING_SOURCE, conditions: 'Includes winter tyres.' }]);
   const cost = (id: string) => goal.running.find((c: any) => c.id === id);
   assert.deepEqual([cost('insurance').monthly, cost('insurance').source, cost('insurance').url], [60, 'research', 'https://www.example.fi/insurance']);
   assert.deepEqual([cost('fuel').monthly, cost('fuel').source], [125, 'research'], 'no named source, but a passage states the number');
   assert.deepEqual([cost('maintenance').source, cost('tax').source], ['assumption', 'assumption'], 'out of range or low confidence: the assumption stays');
   assert.match(r.answer.text, /Typical price: €12,500 \(example\.fi\)[\s\S]*No source stated clearly: maintenance and tyres, vehicle tax/);
+  assert.match(r.answer.text, /Exa could not check financing terms/);
+  assert.ok(r.answer.scenarios[0].monthlyNeeded < car.answer.scenarios[0].monthlyNeeded);
+  assert.equal(goal.benchmarks.find((b: any) => b.topic === 'insurance').quote, INSURANCE_SOURCE.snippet);
   assert.ok(r.answer.sources.length >= 2 && r.answer.scenarios, 'sources and the recalculated comparison come with it');
   assert.match(logs.join(' '), /financing.*Exa HTTP 500/, 'a failed topic is logged, the rest still answers');
 
   const picked = await say(app, 'Use option 1', r.state);
   assert.deepEqual([picked.state.draft.price, picked.state.draft.priceSource], [13900, 'research']);
-  assert.equal(picked.state.draft.benchmarks.find((b: any) => b.topic === 'price').url, 'https://www.example.fi/corolla');
+  assert.equal(picked.state.draft.benchmarks.find((b: any) => b.topic === 'price').quote, LISTING_SOURCE.snippet);
+  const refreshed = await act(app, 'research_goal', {}, picked.state);
+  assert.equal(refreshed.state.draft.price, 13900, 'research keeps the selected listing budget');
 
   const own = await confirmed(app, 'Could I buy a €9,000 car next year?');
   const kept = await act(app, 'research_goal', {}, own.state);
@@ -395,8 +411,41 @@ test('web research: open questions get sources; without a key the trainer says s
   assert.deepEqual(await createContainer().handle('GET', '/api/trainer/status').then((s: any) => [s.model, s.research, s.data, s.starters.length]), [false, false, 'fixture', 4]);
 });
 
+test('a revised product needs confirmation, then searches that product with old evidence cleared', async () => {
+  const research = fakeResearch({ 'for sale': CAR_MARKET, 'seller listings': CAR_MARKET });
+  const app = createContainer({ research });
+  const initial = await act(app, 'simulate_goal', { kind: 'car', name: 'used Toyota Corolla', note: 'Personal case details' });
+  const ready = await act(app, 'confirm_brief', {}, initial.state);
+  const first = await act(app, 'research_goal', {}, ready.state);
+  assert.equal(first.state.draft.options.length, 1);
+  const revised = await act(app, 'what_if', { name: 'used Toyota Yaris Hybrid' }, first.state);
+  assert.equal(revised.answer.type, 'brief');
+  assert.equal(revised.state.draft.options.length, 0);
+  await act(app, 'research_goal', {}, revised.state);
+  assert.equal(research.queries.length, 4, 'no research before the revised brief is confirmed');
+  const confirmed = await act(app, 'confirm_brief', {}, revised.state);
+  await act(app, 'research_goal', {}, confirmed.state);
+  assert.match(research.queries[4], /used Toyota Yaris Hybrid/);
+  assert.ok(research.queries.every((query) => !query.includes('Personal case details')));
+});
+
+test('a price without a supporting excerpt cannot replace the plan after a partial Exa failure', async () => {
+  const mixed = { content: { typical_price_eur: 12500 }, grounding: CAR_MARKET.grounding,
+    sources: [{ ...CAR_SOURCE, snippet: 'The search page returned 12 500 results without a cash price.' }] };
+  const research = fakeResearch({ 'for sale': mixed, 'seller listings': new Error('Exa HTTP 429') });
+  const app = createContainer({ research });
+  const initial = await confirmed(app, 'Could I buy a car next year?');
+  const result = await act(app, 'research_goal', {}, initial.state);
+  assert.match(result.answer.text, /no verified figures/i);
+  assert.match(result.answer.text, /could not check seller listings/i);
+  assert.equal(result.state.draft.price, initial.state.draft.price);
+  assert.deepEqual(result.state.draft.options, []);
+  assert.equal(result.answer.scenarios[0].monthlyNeeded, initial.answer.scenarios[0].monthlyNeeded);
+});
+
 test('an approved monitor looks the price up again and reports a change with its source', async () => {
-  const research = fakeResearch({ 'for sale': { content: { typical_price_eur: 4200 }, grounding: [{ field: 'typical_price_eur', confidence: 'high', urls: ['https://www.example.fi/trips'] }], sources: [CAR_SOURCE] } });
+  const tripSource = { ...CAR_SOURCE, url: 'https://www.example.fi/trips', snippet: 'This package costs €4,200 for two travellers.' };
+  const research = fakeResearch({ 'for sale': { content: { typical_price_eur: 4200 }, grounding: [{ field: 'typical_price_eur', confidence: 'high', urls: [tripSource.url] }], sources: [tripSource] } });
   const app = createContainer({ research });
   let r = await confirmed(app, 'Could I afford a €3,800 trip in 8 months?');
   r = await say(app, 'Agree this plan', r.state);
@@ -406,7 +455,10 @@ test('an approved monitor looks the price up again and reports a change with its
 
   const watched = await act(app, 'set_monitoring', { prices: true }, r.state);
   const check = await act(app, 'recheck_plan', {}, watched.state);
-  assert.match(check.state.plan.lastCheck.changes[0], /typical price is now €4,200 \(example\.fi\); your plan counts €3,800/);
+  assert.match(check.state.plan.lastCheck.changes.join('\n'), /current typical price is €4,200 \(example\.fi\)[.;] your plan counts €3,800/i);
+  assert.equal(check.state.plan.goal.price, 3800, 'checking prices does not change the agreed plan');
+  assert.equal(check.state.plan.lastCheck.proposedGoal.price, 4200);
+  assert.ok(check.answer.scenarios[0].monthlyNeeded > check.state.plan.monthlySaving);
   assert.ok(check.answer.followUps.includes('The budget is €4,200') && check.answer.sources.length === 1);
   const updated = await say(app, 'The budget is €4,200', check.state);
   assert.deepEqual([updated.state.draft.price, updated.answer.type], [4200, 'scenario'], 'the user decides whether to adopt the new price');
@@ -422,7 +474,8 @@ test('a figure the model found by search enters the plan only with a quote the s
   const r = await say(createContainer({ research, agent: good.agent }), 'Could I buy a used car next year? Check real prices.');
   assert.deepEqual([r.state.draft.price, r.state.draft.priceSource, r.state.draft.note], [12500, 'research', 'commutes 40 km a day']);
   assert.deepEqual([r.state.draft.benchmarks[0].value, r.state.draft.benchmarks[0].url], [12500, CAR_SOURCE.url]);
-  assert.deepEqual([r.answer.source, r.answer.text], ['model', 'A typical used car costs about **€12,500**.']);
+  assert.match(r.answer.text, /€12,500/);
+  assert.equal(r.answer.type, 'brief', 'the user still confirms the goal');
   assert.deepEqual(r.answer.sources, [CAR_SOURCE]);
 
   const invented = scriptedAgent([{ name: 'simulate_goal', args: { kind: 'car', name: 'used car' } }, search, apply(9000, 'a used car costs 9 000 euros'),
@@ -430,7 +483,7 @@ test('a figure the model found by search enters the plan only with a quote the s
   const bad = await say(createContainer({ research, agent: invented.agent }), 'Could I buy a used car next year?');
   assert.equal(bad.state.draft.price, 15000);
   assert.match(invented.seen.results[2].error, /word for word/);
-  assert.match(invented.seen.results[3].error, /must contain the value/);
+  assert.match(invented.seen.results[3].error, /must state the value and its currency or unit/);
 });
 
 test('cuts can target any of the user\'s own spending categories, not just two', async () => {
@@ -466,9 +519,12 @@ test('a loan is a choice: amount, years and rate are yours, and the rate says wh
   assert.equal(none.answer.scenarios[0].loan, undefined, 'borrowing nothing is no loan');
 
   // A rate Exa found is used, with its source, when a loan is switched on.
+  const loanSource = { title: 'Loans', url: 'https://www.example.fi/loans', published: '', snippet: 'Nominal interest 10.64% per year. Minimum age is 23.' };
   const research = fakeResearch({ 'for sale': CAR_MARKET, 'yearly cost': CAR_COSTS, loan: {
-    content: { interest_rate_pct: 10.64 }, grounding: [{ field: 'interest_rate_pct', confidence: 'high', urls: ['https://www.example.fi/loans'] }], sources: [] } });
+    content: { interest_rate_pct: 10.64, conditions: 'Minimum age is 23.' },
+    grounding: [{ field: 'interest_rate_pct', confidence: 'high', urls: [loanSource.url] }], sources: [loanSource] } });
   const found = await act(createContainer({ research }), 'research_goal', {}, r.state.draft ? { ...r.state, draft: { ...r.state.draft, loan: null } } : r.state);
+  assert.match(found.answer.text, /Minimum age is 23/);
   const withRate = await act(createContainer({ research }), 'what_if', { loan: true }, found.state);
   assert.deepEqual([withRate.state.draft.loan.ratePct, withRate.state.draft.loan.rateSource, withRate.state.draft.loan.rateUrl], [10.64, 'research', 'https://www.example.fi/loans']);
 });
@@ -502,7 +558,7 @@ test('every answer carries a trace of the steps behind it, with Exa queries and 
   const researched = await app.handle('POST', '/api/trainer/action', { action: { name: 'research_goal' }, state: car.state }, {}, (e: any) => events.push(e));
   const step = researched.answer.trace[0];
   assert.match(step.title, /Researched on the web with Exa/);
-  assert.equal(step.items.length, 3, 'the queries that were asked: options, running costs, loan');
+  assert.equal(step.items.length, 4, 'the queries cover the market benchmark, listings, running costs and financing');
   assert.match(step.items[0], /^Asked Exa: car for sale in Finland/);
   assert.ok(step.sources.length > 0 && step.sources.every((s: any) => s.url.startsWith('http')));
   assert.deepEqual(events.map((e) => [e.step.id, e.step.status]), [['tool-1', 'running'], ['tool-1', 'done']], 'steps are reported live: running, then done');
@@ -642,6 +698,7 @@ test('Exa adapter: key in a header, passages mapped, unusable results dropped', 
   assert.equal(answer.sources.length, 1);
   const sent = JSON.parse(calls.at(-1)!.init.body);
   assert.deepEqual(sent.outputSchema, { type: 'object', properties: { typical_price_eur: { type: 'number' } } });
+  assert.equal(sent.contents.maxAgeHours, 0, 'listing and cost research requests fresh page contents');
   assert.match(sent.systemPrompt, /Never estimate/);
 });
 

@@ -6,10 +6,19 @@ import type { Config } from '../../config';
 
 const SNIPPET_CHARS = 600;
 const EXTRACT_TIMEOUT_FACTOR = 2.5;   // a structured answer adds synthesis time on top of the search
-const EXTRACT_INSTRUCTIONS = 'Answer for consumers in Finland using current sources. All amounts in euros. '
+const EXTRACT_INSTRUCTIONS = 'Use Finnish sources, including Finnish-language pages. Prefer original listings, provider terms, or official data. '
+  + 'Use amounts in euros that the cited pages explicitly state. For offers, cite the individual listing and omit sold, expired or finance-only prices. '
   + 'Leave a field out when the sources do not state it clearly. Never estimate or calculate a figure yourself.';
 const CONFIDENCE = ['low', 'medium', 'high'] as const;
-const isHttp = (url: unknown): url is string => typeof url === 'string' && /^https?:\/\//i.test(url);
+function isHttp(url: unknown): url is string {
+  if (typeof url !== 'string' || url.length > 500) return false;
+  try {
+    const parsed = new URL(url);
+    return /^https?:\/\//i.test(url) && !parsed.username && !parsed.password;
+  } catch {
+    return false;
+  }
+}
 
 export interface ExaOptions { apiKey: string; baseUrl?: string; timeoutMs?: number; numResults?: number; fetchImpl?: typeof fetch }
 
@@ -25,7 +34,7 @@ function toContent(content: unknown): Record<string, unknown> {
 
 function toSource(r: ExaResult): Source {
   const passage = (r.highlights?.filter(Boolean).join(' … ') || r.text || '').replace(/\s+/g, ' ').trim();
-  return { title: r.title ?? '', url: r.url ?? '', published: (r.publishedDate ?? '').slice(0, 10), snippet: passage.slice(0, SNIPPET_CHARS) };
+  return { title: (r.title ?? '').slice(0, 700), url: r.url ?? '', published: (r.publishedDate ?? '').slice(0, 10), snippet: passage.slice(0, SNIPPET_CHARS) };
 }
 
 export function createExaResearch({ apiKey, baseUrl = 'https://api.exa.ai', timeoutMs = 8000, numResults = 4, fetchImpl = globalThis.fetch }: ExaOptions): ResearchProvider {
@@ -55,7 +64,10 @@ export function createExaResearch({ apiKey, baseUrl = 'https://api.exa.ai', time
 
     // Exa answers in the requested shape and says which sources back each field (grounding).
     async extract(query: string, properties: Record<string, unknown>): Promise<Extraction> {
-      const reply = await post(query, { outputSchema: { type: 'object', properties }, systemPrompt: EXTRACT_INSTRUCTIONS }, timeoutMs * EXTRACT_TIMEOUT_FACTOR);
+      const reply = await post(query, {
+        contents: { highlights: { maxCharacters: SNIPPET_CHARS }, maxAgeHours: 0, livecrawlTimeout: timeoutMs },
+        outputSchema: { type: 'object', properties }, systemPrompt: EXTRACT_INSTRUCTIONS
+      }, timeoutMs * EXTRACT_TIMEOUT_FACTOR);
       return {
         content: toContent(reply.output?.content),
         grounding: (reply.output?.grounding ?? []).map((g) => ({

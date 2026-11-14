@@ -20,12 +20,13 @@ export function createGeminiClassifier({ apiKey, model, baseUrl = 'https://gener
           body: JSON.stringify({
             systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
             contents: [{ role: 'user', parts: [{ text: question }] }],
-            generationConfig: { responseMimeType: 'application/json', temperature: 0 }
+            generationConfig: { responseMimeType: 'application/json', ...(model.startsWith('gemini-3.') ? { thinkingConfig: { thinkingLevel: 'LOW' } } : { temperature: 0 }) }
           })
         });
         if (!res.ok) throw new Error(`Gemini HTTP ${res.status}`);
         const body = await res.json();
-        const parsed = JSON.parse(body.candidates[0].content.parts[0].text);
+        const parts = body.candidates?.[0]?.content?.parts as Array<{ thought?: boolean; text?: string }> | undefined;
+        const parsed = JSON.parse(parts?.filter((part) => !part.thought && typeof part.text === 'string').map((part) => part.text).join('') || '{}');
         return { intent: parsed.intent, id: parsed.id ?? null };
       } finally {
         clearTimeout(timer);

@@ -1,7 +1,7 @@
 // AgentModel adapter: Gemini function calling through the official SDK (@google/genai).
 // Gemini decides which tools to call; the application runs them and hands back the results,
 // until Gemini answers in text. Node only: never bundled into the browser.
-import { GoogleGenAI, type Content, type FunctionCall, type GenerateContentConfig, type Part } from '@google/genai';
+import { GoogleGenAI, ThinkingLevel, type Content, type FunctionCall, type GenerateContentConfig, type Part } from '@google/genai';
 import type { AgentModel, AgentRequest } from '../../application/ports';
 import type { Config } from '../../config';
 
@@ -22,7 +22,8 @@ export function createGeminiAgent({ apiKey, model, timeoutMs = 20000, client }: 
     async run({ system, turns, tools, execute, maxSteps = DEFAULT_MAX_STEPS }: AgentRequest): Promise<string> {
       const config: GenerateContentConfig = {
         systemInstruction: system,
-        temperature: TEMPERATURE,
+        // Gemini 3 models are tuned for their default temperature. Keep the chat loop responsive.
+        ...(model.startsWith('gemini-3.') ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } } : { temperature: TEMPERATURE }),
         tools: [{ functionDeclarations: tools.map((t) => ({ name: t.name, description: t.description, parametersJsonSchema: t.parameters })) }]
       };
       let contents: Content[] = turns.map((t) => ({ role: t.role === 'assistant' ? 'model' : 'user', parts: [{ text: t.text }] }));

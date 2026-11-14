@@ -1,15 +1,16 @@
 // Trainer screens: the three baskets with tap-to-correct lines and the safe-to-spend math,
 // and the plan screen with what-if sliders, scenario comparison and the agreed plan tracker.
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Answer } from '../../../../backend/src/domain/types';
 import { CUT_GROUPS, type CashLine, type GoalDraft, type GoalScenario, type LineBasis, type Monitoring, type SpendingCut } from '../../../../backend/src/domain/trainer';
 import { useModel } from '../../models/hooks';
 import { isError, type CashflowView } from '../../models/phoneModel';
 import { useNav } from '../../controllers/nav';
-import { money, shortDate } from '../format';
+import { money } from '../format';
 import { Btn, Card, Failed, List, Loading, Section } from '../components';
 import { Markdown } from './Markdown';
-import { BasketBar, BriefCard, Choices, Fixes, GoalCosts, GoalOptions, MathSteps, NextStepCard, PlanCard, STATUS_LABEL, ScenarioCards, Sources } from './TrainerCards';
+import { BasketBar, BriefCard, Choices, Fixes, GoalCosts, GoalOptions, MathSteps, NextStepCard, PlanCard, STATUS_LABEL, SavingsSetup, ScenarioCards, ScenarioChange, Sources, fullDate } from './TrainerCards';
+import { CAR_QUESTION, SPENDING_QUESTION, demoDataLabel, useTrainerStatus } from './demo';
 
 const BASIS_TEXT: Record<LineBasis, string> = {
   recurring: 'every month', assumed: 'assumed monthly: check', average: 'monthly average', corrected: 'set by you'
@@ -23,7 +24,7 @@ const LOAN = { step: 100, maxYears: 15, maxRate: 30 };
 const DISCLAIMER = 'Estimates from your own transactions and the assumptions shown. You decide.';
 const MONITORS: { key: keyof Monitoring; label: string }[] = [
   { key: 'prices', label: 'Prices of what I am saving for' },
-  { key: 'conditions', label: 'Loan and insurance conditions' },
+  { key: 'conditions', label: 'Loan terms (when the plan uses a loan)' },
   { key: 'spending', label: 'My own spending' }
 ];
 const watching = (m: Monitoring) => m.prices || m.conditions || m.spending;
@@ -67,6 +68,7 @@ function LineRow({ line, busy, onMove }: { line: CashLine; busy: boolean; onMove
 export function CashflowScreen() {
   const model = useModel();
   const nav = useNav();
+  const status = useTrainerStatus();
   const { run, error, busy } = useTool();
   const flow = model.cashflow();
   if (!flow) return <Loading />;
@@ -75,23 +77,31 @@ export function CashflowScreen() {
   return (
     <div className="content">
       <div className="title">Your three baskets</div>
+      <p className="t-data-context">{demoDataLabel(status?.data)} · {flow.periodFrom ? `${fullDate(flow.periodFrom)} to ${fullDate(flow.asOf)}` : `${flow.periodDays} days through ${fullDate(flow.asOf)}`}</p>
       <div className="hero">
-        <div className="small">Safe to spend this week</div>
+        <div className="small">Estimated safe to spend this week</div>
         <strong>{money(flow.safe.week, 0)}</strong>
+        <div className="small t-liquidity">Based on your current account balance at {fullDate(flow.asOf)}.</div>
         <div className="side"><span>Safe to save this month</span><b>{money(flow.safeToSave, 0)}</b></div>
       </div>
+      <Card padded>
+        <BasketBar baskets={flow.baskets} explain />
+        <p className="foot">Average monthly income: {money(flow.income, 0)}.{flow.transferReserve > 0 ? ` Salary sweeps reserve another ${money(flow.transferReserve, 0)} a month.` : ''}</p>
+      </Card>
       <label className="t-toggle">
         <input type="checkbox" checked={model.trainer.multiBank} disabled={busy} onChange={(e) => { void run('set_multibank', { on: e.target.checked }); }} />
         <span>Include my accounts at other banks (PSD2 demo)</span>
       </label>
       {error && <div className="warn" role="alert">{error}</div>}
-      <Card padded>
-        <BasketBar baskets={flow.baskets} />
-        <p className="foot">About {money(flow.income, 0)} comes in each month. Averages use the last {flow.periodDays} days.</p>
-      </Card>
 
       <Section title="How safe-to-spend is worked out" />
-      <Card padded><MathSteps steps={flow.safe.steps} /></Card>
+      <Card padded>
+        <MathSteps steps={flow.safe.steps} />
+        {!!flow.assumptions?.length && <details className="t-evidence">
+          <summary>What the estimate assumes</summary>
+          <ul className="t-changes">{flow.assumptions.map((assumption) => <li key={assumption}>{assumption}</li>)}</ul>
+        </details>}
+      </Card>
 
       {flow.baskets.map((b) => (
         <div key={b.basket}>
@@ -109,7 +119,7 @@ export function CashflowScreen() {
           <List>{flow.oneOffs.map((l) => <LineRow key={l.id} line={l} busy={busy} onMove={move(l)} />)}</List>
         </>
       )}
-      <Btn label="Ask Revi to explain" primary block onClick={() => nav.ask('Where did my money go?')} />
+      <Btn label="Ask Revi to explain" primary block onClick={() => nav.ask(SPENDING_QUESTION)} />
       <p className="foot">{flow.disclaimer}</p>
     </div>
   );
@@ -252,17 +262,21 @@ export function PlanScreen() {
   const model = useModel();
   const nav = useNav();
   const { run, error, busy } = useTool();
+  const status = useTrainerStatus();
   const { draft, plan } = model.trainer;
   const flowNow = model.cashflow();
   const flow = flowNow && !isError(flowNow) ? flowNow : null;
-  const [answer, setAnswer] = useState<Answer | null>(null);
+  const opened = useRef(false);
+  const [{ answer, previous }, setAnswers] = useState<{ answer: Answer | null; previous: Answer | null }>({ answer: null, previous: null });
   const act = useCallback(async (name: string, args: Record<string, unknown> = {}) => {
     const a = await run(name, args);
-    if (a) setAnswer(a);
+    if (a) setAnswers((before) => ({ answer: a, previous: before.answer }));
   }, [run]);
 
   // On opening: the scenarios for the goal in progress, or (with the user's permission) a fresh check of the plan.
   useEffect(() => {
+    if (opened.current) return;
+    opened.current = true;
     if (draft) void act('get_plan');
     else if (plan) void act(watching(plan.monitor) ? 'recheck_plan' : 'get_plan');
   }, []);   // eslint-disable-line react-hooks/exhaustive-deps
@@ -272,30 +286,35 @@ export function PlanScreen() {
       <div className="content">
         <div className="title">Plan a goal</div>
         <Card padded><p className="t-empty">Thinking about something big? Ask Revi and see what it really costs, how long it takes and what you would give up for it.</p></Card>
-        <Btn label="Could I buy a car next year?" primary block onClick={() => nav.ask('Could I buy a car next year?')} />
+        <Btn label="Try a first car plan" primary block onClick={() => nav.ask(CAR_QUESTION)} />
         <Btn label="Could I afford a €3,000 trip in 8 months?" block onClick={() => nav.ask('Could I afford a €3,000 trip in 8 months?')} />
       </div>
     );
   }
   const goal = draft ?? plan!.goal;
+  const proposal = plan?.lastCheck?.proposedGoal;
   return (
     <div className="content">
       <div className="title">{draft ? `What if: ${draft.name}` : 'Your agreed plan'}</div>
+      <p className="t-data-context">{demoDataLabel(status?.data)}{flow && ` · Figures through ${fullDate(flow.asOf)}`}</p>
+      {busy && <p className="t-data-context" role="status">Updating your plan…</p>}
       {error && <div className="warn" role="alert">{error}</div>}
 
       {plan && !draft && (
         <>
           <PlanCard plan={plan} />
+          <SavingsSetup plan={plan} onOpen={() => nav.go('transfer', 'savings-plan')} />
           {plan.lastCheck && (
             <Card padded>
-              <b>{STATUS_LABEL[plan.lastCheck.status]}</b>
+              <b>{proposal ? `If the market change applies: ${STATUS_LABEL[plan.lastCheck.status].toLowerCase()}` : STATUS_LABEL[plan.lastCheck.status]}</b>
               <ul className="t-changes">{plan.lastCheck.changes.map((c) => <li key={c}>{c}</li>)}</ul>
-              <p className="foot">Checked {shortDate(plan.lastCheck.checkedOn)}</p>
+              {proposal && <><p className="foot">Your saved amounts stay as agreed until you choose.</p><GoalCosts goal={proposal} label="Evidence for the proposed update" /></>}
+              <p className="foot">Checked {fullDate(plan.lastCheck.checkedOn)}</p>
             </Card>
           )}
           <div className="actions">
-            <Btn label={busy ? 'Checking…' : 'Re-check plan'} primary onClick={() => { void act('recheck_plan'); }} />
-            <Btn label="Adjust" onClick={() => { void act('what_if'); }} />
+            <Btn label={busy ? 'Checking…' : 'Recheck plan'} primary disabled={busy} onClick={() => { void act('recheck_plan'); }} />
+            <Btn label="Adjust" disabled={busy} onClick={() => { void act('what_if'); }} />
           </div>
           {answer?.choices && answer.choices.length > 0 && (
             <>
@@ -303,14 +322,14 @@ export function PlanScreen() {
               <Choices choices={answer.choices} busy={busy} onPick={(c) => { void act('choose_path', { id: c.id }); }} />
             </>
           )}
-          <Section title="What Revi may keep an eye on" />
+          <Section title="What to recheck" />
           {MONITORS.map((m) => (
             <label key={m.key} className="t-toggle">
               <input type="checkbox" checked={plan.monitor[m.key]} disabled={busy} onChange={(e) => { void act('set_monitoring', { [m.key]: e.target.checked }); }} />
               <span>{m.label}</span>
             </label>
           ))}
-          <p className="foot t-hint">Checked each time you open this screen, never in the background.</p>
+          <p className="foot t-hint">Selected items are rechecked when you open this plan or tap Recheck plan.</p>
         </>
       )}
 
@@ -318,8 +337,11 @@ export function PlanScreen() {
         <>
           {answer && <Card padded><Markdown text={answer.text} /></Card>}
           {!draft.confirmed ? (
-            <BriefCard key={`${draft.price}-${draft.months}`} goal={draft} busy={busy}
-              onConfirm={() => { void act('confirm_brief'); }} onChange={(change) => { void act('what_if', change); }} />
+            <>
+              <BriefCard key={`${draft.name}-${draft.price}-${draft.months}`} goal={draft} busy={busy}
+                onConfirm={() => { void act('confirm_brief'); }} onChange={(change) => { void act('what_if', change); }} />
+              {draft.price <= 0 && <Btn label="Look up the price with Exa" disabled={busy} onClick={() => { void act('research_goal'); }} />}
+            </>
           ) : (
             <>
               {answer?.fixes && answer.fixes.length > 0 && (
@@ -331,11 +353,22 @@ export function PlanScreen() {
               {answer?.scenarios && (
                 <>
                   <Section title="Compare" />
+                  {previous?.goal?.name === answer.goal?.name && previous?.scenarios?.[0] && answer.scenarios[0] &&
+                    <ScenarioChange previous={previous.scenarios[0]} current={answer.scenarios[0]} />}
                   <ScenarioCards scenarios={answer.scenarios} />
+                  <div className="actions">
+                    <Btn label="Research with Exa" primary disabled={busy} onClick={() => { void act('research_goal'); }} />
+                    <Btn label="Try 3 more months" disabled={busy || draft.months > 237} onClick={() => { void act('what_if', { add_months: 3 }); }} />
+                    {answer.scenarios[0]?.feasible && <Btn label="Save plan" disabled={busy} onClick={() => { void act('agree_plan'); }} />}
+                  </div>
                 </>
               )}
               {answer?.scenarios && (
                 <>
+                  <details className="t-evidence">
+                    <summary>Edit purchase brief</summary>
+                    <BriefCard key={`${draft.name}-${draft.price}-${draft.months}`} goal={draft} busy={busy} onChange={(change) => { void act('what_if', change); }} />
+                  </details>
                   <Section title="Play with your plan" />
                   <PlanControls goal={draft} flow={flow} scenarios={answer.scenarios} busy={busy} onChange={(args) => { void act('what_if', args); }} />
                 </>
@@ -347,23 +380,19 @@ export function PlanScreen() {
 
       {answer?.scenarios && !draft && (
         <>
-          <Section title="Where you stand today" />
+          <Section title={proposal ? 'If the proposed changes apply' : 'Where you stand today'} />
           <ScenarioCards scenarios={answer.scenarios} />
         </>
       )}
-      {answer?.nextStep && <NextStepCard step={answer.nextStep} onGo={(s) => (s.screen ? nav.go(s.screen) : s.ask === 'Agree this plan' ? void act('agree_plan') : s.ask && nav.ask(s.ask))} />}
+      {draft && answer?.nextStep && answer.nextStep.ask !== 'Agree this plan' &&
+        <NextStepCard step={answer.nextStep} busy={busy} onGo={(s) => (s.screen ? nav.go(s.screen) : s.ask && nav.ask(s.ask))} />}
       {goal.options.length > 0 && <GoalOptions goal={goal} busy={busy} onPick={(i) => { void act('choose_option', { index: i }); }} />}
-      <Section title="What it costs" />
-      <Card padded><GoalCosts goal={goal} /></Card>
+      <GoalCosts goal={goal} />
       {answer?.sources && answer.sources.length > 0 && <Sources sources={answer.sources} />}
 
       {draft && (
         <>
-          <div className="actions">
-            {draft.confirmed && <Btn label="Agree this plan" primary onClick={() => { void act('agree_plan'); }} />}
-            <Btn label={busy ? 'Working…' : 'Research with Exa'} onClick={() => { void act('research_goal'); }} />
-          </div>
-          <Btn label={plan ? 'Discard changes' : 'Drop this goal'} block onClick={() => model.patchTrainer({ draft: null })} />
+          <Btn label={plan ? 'Discard changes' : 'Drop this goal'} block disabled={busy} onClick={() => model.patchTrainer({ draft: null })} />
         </>
       )}
       <p className="foot">{DISCLAIMER}</p>

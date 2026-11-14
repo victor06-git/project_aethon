@@ -42,14 +42,14 @@ export const Hero = ({ label, value, side }: { label: string; value: string; sid
   <div className="hero"><div className="small">{label}</div><strong>{value}</strong>{side && <div className="side">{side}</div>}</div>
 );
 
-export function Btn({ label, go, arg, modal, primary, block, submit, onClick }: {
+export function Btn({ label, go, arg, modal, primary, block, submit, disabled, onClick }: {
   label: string; go?: string; arg?: string; modal?: [string, string];
-  primary?: boolean; block?: boolean; submit?: boolean; onClick?: () => void;
+  primary?: boolean; block?: boolean; submit?: boolean; disabled?: boolean; onClick?: () => void;
 }) {
   const nav = useNav();
   const click = onClick ?? (go ? () => nav.go(go, arg ?? null) : modal ? () => nav.showModal(modal[0], modal[1]) : undefined);
   return (
-    <button type={submit ? 'submit' : 'button'} className={`btn${primary ? ' primary' : ''}${block ? ' block' : ''}`} onClick={click}>
+    <button type={submit ? 'submit' : 'button'} className={`btn${primary ? ' primary' : ''}${block ? ' block' : ''}`} disabled={disabled} onClick={click}>
       {label}
     </button>
   );

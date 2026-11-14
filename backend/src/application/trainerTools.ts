@@ -14,8 +14,7 @@ import {
   type AgreedPlan, type BenchmarkUnit, type CashLine, type Cashflow, type GoalDraft, type LineBasket, type Monitoring, type NextStep,
   type PlanStatus, type Source, type TrainerState
 } from '../domain/trainer';
-import { numbersIn } from './grounding';
-import { researchGoal, watchGoal } from './goalResearch';
+import { evidenceQuote, researchGoal, watchGoal, type Watch } from './goalResearch';
 import type { CoachService } from './coachService';
 import type { ExternalAccounts, ResearchProvider, ToolCall, ToolSpec, TransactionRepository } from './ports';
 
@@ -49,7 +48,7 @@ const TOPICS: Record<string, { label: string; units: BenchmarkUnit[] }> = {
   loan_rate: { label: 'Loan interest rate', units: ['percent'] }
 };
 const COACH_IDS = [...Object.keys(INTENTS.forecast), ...Object.keys(INTENTS.action)];
-const RESEARCH_OFF = 'Live web research is switched off (no EXA_API_KEY on the server), so I am using typical figures as assumptions. You can correct any of them.';
+const RESEARCH_OFF = 'Live web research is unavailable in this session (no EXA_API_KEY on the server). The plan uses the amounts shown in its cost breakdown.';
 const WHAT_IF_CHIPS = ['What if I wait 3 more months?', 'What if I cut dining out by 20%?', 'What if I take a loan?'];
 
 // ---- Argument checks ----
@@ -94,13 +93,15 @@ function need<T>(value: T | undefined, key: string): T {
 
 export const allLines = (c: Cashflow): CashLine[] => [...c.baskets.flatMap((b) => b.lines), ...c.oneOffs];
 const assumed = (c: Cashflow): CashLine[] => allLines(c).filter((l) => l.basis === 'assumed').slice(0, REVIEW_LINES);
+const exactEur = (amount: number): string => `€${amount.toLocaleString('en-GB', { maximumFractionDigits: 2, minimumFractionDigits: Number.isInteger(amount) ? 0 : 2 })}`;
 
 function safeAnswer(c: Cashflow): Answer {
   const s = c.safe;
   return {
     type: 'cashflow', figure: eur(s.week),
-    text: `You can safely spend about **${eur(s.week)}** this week, about ${eur(s.perDay)} a day until payday on ${longDate(s.until)}. `
-      + 'That is what is left after the bills due before payday and a reserve for irregular costs.',
+    text: `From your ${longDate(c.asOf)} statement, the estimate for how much you can safely spend over the following week is **${eur(s.week)}**. `
+      + `It uses cash already on hand after upcoming bills and an irregular-cost reserve, until the estimated payday on ${longDate(s.until)}. `
+      + `Your repeatable savings capacity from monthly income and spending is about ${eur(c.safeToSave)} a month.`,
     steps: s.steps, review: assumed(c), followUps: ['Where did my money go?', 'Could I buy a car next year?']
   };
 }
@@ -108,12 +109,15 @@ function safeAnswer(c: Cashflow): Answer {
 function basketsAnswer(c: Cashflow, intro = ''): Answer {
   const [regular, irregular, everyday] = c.baskets;
   const left = c.free >= 0
-    ? `That leaves about **${eur(c.free)}** a month; safe to save: **${eur(c.safeToSave)}**.`
+    ? `That leaves about **${eur(c.safeToSave)}** a month for savings or goals.`
     : `That is about **${eur(-c.free)}** a month more than comes in.`;
   return {
     type: 'cashflow',
     text: `${intro}About **${eur(c.income)}** comes in each month. **${eur(regular.monthly)}** goes to mandatory regular bills, `
-      + `**${eur(irregular.monthly)}** to mandatory irregular costs and **${eur(everyday.monthly)}** to everyday spending. ${left}`,
+      + `**${eur(irregular.monthly)}** to mandatory irregular costs and **${eur(everyday.monthly)}** to everyday spending. `
+      + (c.transferReserve ? `I also reserve **${eur(c.transferReserve)}** for monthly salary sweeps outside these accounts. ` : '')
+      + (c.investmentMonthly > 0 ? `You have invested about ${eur(c.investmentMonthly)} a month on average. That comes from the amount left for savings and goals. ` : '')
+      + `${left} Based on ${longDate(c.periodFrom)} to ${longDate(c.asOf)}.`,
     baskets: c.baskets, review: assumed(c), followUps: ['What kind of spender am I?', 'What can I safely spend this week?']
   };
 }
@@ -138,8 +142,9 @@ function goalAnswer(goal: GoalDraft, ctx: TrainerContext, intro = ''): Answer {
   const cushion = sim.cushion > 0 ? ` I counted ${eur(sim.start)} of your savings and left ${eur(sim.cushion)} untouched as a cushion.` : '';
   const upfront = ` On the day you need ${eur(plan.upfront)} upfront.`;
   const assumptions = goal.running.some((c) => c.source === 'assumption') ? ' Running costs are typical figures until we look them up.' : '';
+  const investment = ctx.cashflow.investmentMonthly > 0 ? ` This uses room before investment contributions. You invested about ${eur(ctx.cashflow.investmentMonthly)} a month on average.` : '';
   return {
-    type: 'scenario', text: `${intro}${text}${upfront}${cushion}${assumptions}`, goal, scenarios: sim.scenarios,
+    type: 'scenario', text: `${intro}${text}${upfront}${cushion}${assumptions}${investment}`, goal, scenarios: sim.scenarios,
     nextStep: nextStepFor(sim.scenarios, ctx), ...(sim.fixes.length ? { fixes: sim.fixes } : {}),
     followUps: plan.feasible ? ['Agree this plan', 'Research with Exa'] : ['Research with Exa']
   };
@@ -172,13 +177,13 @@ function briefAnswer(goal: GoalDraft, ctx: TrainerContext, intro = ''): Answer {
       ? `- **Budget:** ${eur(goal.price)}${goal.priceSource === 'assumption' ? ' (my assumption: tell me yours)' : ''}`
       : '- **Budget:** not set yet. Tell me a price, for example €3,000.',
     `- **When:** in ${goal.months} months, by ${longDate(sim.scenarios[0].readyDate)}`,
-    `- **From your accounts:** about ${eur(sim.capacity)} free each month and ${eur(sim.start)} of savings to use`,
+    `- **From your accounts:** about ${eur(sim.capacity)} free each month${ctx.cashflow.investmentMonthly > 0 ? ' before investing' : ''} and ${eur(sim.start)} of savings to use`,
     running > 0 ? `- **After buying:** about ${eur(running)} a month to run it (typical figures, to be researched)` : '- **After buying:** no ongoing costs counted',
     ...(goal.note ? [`- **Your situation:** ${goal.note}`] : [])
   ];
   return {
     type: 'brief', goal, text: `${intro}Here is the brief as I understand it:\n${lines.join('\n')}\nIs this right?`,
-    followUps: goal.price > 0 ? ['Yes, that is right', 'Make it 18 months', 'The budget is €12,000'] : ['The budget is €3,000']
+    followUps: goal.price > 0 ? ['Yes, that is right', 'Make it 18 months', 'The budget is €12,000'] : ['Research with Exa', 'The budget is €3,000']
   };
 }
 
@@ -202,6 +207,7 @@ function whatIfFrom(args: Args): WhatIf {
   const costMonthly = optNumber(args, 'cost_monthly', 0, LIMITS.monthly);
   const wantsLoan = loan === true || (loan === undefined && (years !== undefined || ratePct !== undefined || amount !== undefined));
   return {
+    name: optString(args, 'name', 60),
     months: optNumber(args, 'months', 1, LIMITS.months),
     addMonths: optNumber(args, 'add_months', -LIMITS.months, LIMITS.months),
     price: optNumber(args, 'price', 1, LIMITS.price),
@@ -223,8 +229,8 @@ function cutTarget(group: string, cashflow: Cashflow): string {
   throw bad(`Unknown spending category "${group}". Choose from: ${known.join(', ')}, or everyday`);
 }
 
-function checkPlan(plan: AgreedPlan, ctx: TrainerContext, outside: string[] = []): { plan: AgreedPlan; answer: Answer } {
-  const now = planToday(plan, ctx);
+function checkPlan(plan: AgreedPlan, ctx: TrainerContext, outside: string[] = [], proposedGoal?: GoalDraft, gaps: string[] = []): { plan: AgreedPlan; answer: Answer } {
+  const now = planToday(plan, ctx, proposedGoal);
   const changes: string[] = [];
   const freed = now.monthlyCapacity - plan.capacityAtAgreement;
   if (Math.abs(freed) >= CHANGE_MIN_EUR) {
@@ -236,14 +242,15 @@ function checkPlan(plan: AgreedPlan, ctx: TrainerContext, outside: string[] = []
   changes.push(...outside);
   // Choices are offered when something actually changed: the decision stays with the user.
   const choices = changes.length ? planChoices(now, ctx.asOf) : [];
-  if (!changes.length) changes.push('Nothing has changed since we agreed this plan.');
+  if (!changes.length) changes.push(gaps.length ? 'No change was verified in the information I could check.' : 'Nothing has changed since we agreed this plan.');
+  changes.push(...gaps);
   const status: PlanStatus = now.feasible ? 'on_track' : now.gap <= now.monthlyNeeded * AT_RISK_SHARE ? 'at_risk' : 'off_track';
-  const checked = { ...plan, lastCheck: { checkedOn: ctx.asOf, status, changes } };
+  const checked: AgreedPlan = { ...plan, lastCheck: { checkedOn: ctx.asOf, status, changes, ...(proposedGoal ? { proposedGoal } : {}) } };
   const ask = choices.length ? '\nYou decide what to do with it:' : '';
   return {
     plan: checked,
     answer: {
-      type: 'plan', text: `${STATUS_TEXT[status]}\n${changes.map((c) => `- ${c}`).join('\n')}${ask}`, plan: checked, scenarios: [now],
+      type: 'plan', text: `${proposedGoal ? `If the verified market changes apply: ${STATUS_TEXT[status]} Your saved amounts stay as agreed until you choose.` : STATUS_TEXT[status]}\n${changes.map((c) => `- ${c}`).join('\n')}${ask}`, plan: checked, scenarios: [now],
       ...(choices.length ? { choices } : {}),
       followUps: status === 'on_track' ? [] : WHAT_IF_CHIPS.slice(0, 2)
     }
@@ -251,9 +258,27 @@ function checkPlan(plan: AgreedPlan, ctx: TrainerContext, outside: string[] = []
 }
 
 /** The agreed goal on today's figures, for the time left until the target date. */
-function planToday(plan: AgreedPlan, ctx: TrainerContext) {
+function planToday(plan: AgreedPlan, ctx: TrainerContext, goal = plan.goal) {
   const months = Math.max(1, monthsBetween(ctx.asOf, plan.targetDate));
-  return simulate({ ...plan.goal, months }, ctx).scenarios[0];
+  return simulate({ ...goal, months }, ctx).scenarios[0];
+}
+
+function marketProposal(goal: GoalDraft, watch: Watch | null): GoalDraft | undefined {
+  const { price, rate } = watch ?? {};
+  if (!price && !(rate && goal.loan)) return undefined;
+  const benchmarks = [...goal.benchmarks];
+  function add(topic: string, unit: BenchmarkUnit, evidence: NonNullable<Watch['price']>) {
+    const index = benchmarks.findIndex((b) => b.topic === topic);
+    if (index >= 0) benchmarks.splice(index, 1);
+    benchmarks.push({ topic, label: TOPICS[topic].label, value: evidence.value, unit, quote: evidence.quote, url: evidence.source.url, sources: [evidence.source] });
+  }
+  if (price) add('price', 'eur', price);
+  if (rate && goal.loan) add('loan_rate', 'percent', rate);
+  return {
+    ...goal, benchmarks,
+    ...(price ? { price: price.value, priceSource: 'research' as const } : {}),
+    ...(rate && goal.loan ? { loan: { ...goal.loan, ratePct: rate.value, rateSource: 'research' as const, rateUrl: rate.source.url } } : {})
+  };
 }
 
 export function createTrainerTools({ transactions, external, coach, research, log = () => {} }: Deps) {
@@ -275,18 +300,26 @@ export function createTrainerTools({ transactions, external, coach, research, lo
       const search = need(optString(args, 'search'), 'search');
       const q = querySpending(ctx.transactions, ctx.asOf, search, optEnum(args, 'period', PERIODS));
       const when = PERIOD_LABEL[q.period];
-      const text = q.count
-        ? `You spent **${eur(q.total)}** on ${search} ${when}, in ${q.count} payment${q.count === 1 ? '' : 's'}.`
-        : `I found no payments for "${search}" ${when}.`;
-      return { answer: { type: 'cashflow', text, figure: q.count ? eur(q.total) : undefined, rows: q.payees }, state };
+      const range = `${longDate(q.from)} to ${longDate(q.to)}`;
+      const refunds = q.refunds ? ` This total includes ${q.refunds} refund${q.refunds === 1 ? '' : 's'}.` : '';
+      const matched = q.count + q.refunds > 0;
+      const result = q.total < 0 ? `You received **${exactEur(-q.total)}** back overall on ${search}` : `You spent **${exactEur(q.total)}** on ${search}`;
+      const text = matched
+        ? `${result} ${when} (${range}), across ${q.count} payment${q.count === 1 ? '' : 's'}.${refunds}`
+        : `I found no payments for "${search}" ${when} (${range}).`;
+      return { answer: { type: 'cashflow', text, figure: matched ? exactEur(q.total) : undefined, rows: q.payees }, state };
     },
 
     get_spending_profile: (_, { state }, ctx) => {
       const p = spendingProfile(ctx.cashflow, ctx.transactions, ctx.asOf);
+      if (ctx.cashflow.income <= 0) return { answer: basketsAnswer(ctx.cashflow, 'I could not identify regular income from this history. '), state };
       const [regular, irregular, everyday] = p.shares;
       const top = p.topEveryday.map((t) => `${t.label} (${eur(t.amount)})`).join(', ');
       const text = `${p.style}. Of every €100 that comes in, about €${regular.pct} goes to mandatory regular bills, €${irregular.pct} to mandatory irregular costs, `
-        + `€${everyday.pct} to everyday spending and €${p.savingRatePct} is left. Your biggest everyday categories each month: ${top}. `
+        + `€${everyday.pct} to everyday spending. `
+        + (ctx.cashflow.transferReserve ? `About €${Math.round(ctx.cashflow.transferReserve * 100 / ctx.cashflow.income)} is reserved for salary sweeps. ` : '')
+        + (p.savingRatePct >= 0 ? `About €${p.savingRatePct} is left. ` : `Spending and transfers exceed income by €${-p.savingRatePct} per €100 earned. `)
+        + (top ? `Your biggest everyday categories each month: ${top}. ` : '')
         + `Everyday spending in the last 30 days: ${eur(p.everydayLast30)} (the 30 days before: ${eur(p.everydayPrevious30)}).`;
       return { answer: { type: 'cashflow', text, rows: p.topEveryday, baskets: ctx.cashflow.baskets }, state };
     },
@@ -338,7 +371,16 @@ export function createTrainerTools({ transactions, external, coach, research, lo
       const query = need(optString(args, 'query', QUERY_LENGTH.max), 'query');
       if (query.length < QUERY_LENGTH.min) throw bad('query is too short');
       if (!research) return { answer: { type: 'research', text: RESEARCH_OFF }, state };
-      const sources = await research.search(query);
+      let sources: Source[];
+      try {
+        sources = await research.search(query);
+      } catch (error) {
+        log(`search_web failed: ${error instanceof Error ? error.message : String(error)}`);
+        return {
+          answer: { type: 'research', text: 'Exa could not complete this search. Try again in a moment.' },
+          state, activity: [`Asked Exa: ${query}`, 'Exa did not complete the search.']
+        };
+      }
       const text = sources.length
         ? `I found ${sources.length} source${sources.length === 1 ? '' : 's'} for "${query}": ${[...new Set(sources.map((s) => host(s.url)))].join(', ')}.`
         : `I found nothing reliable for "${query}".`;
@@ -348,18 +390,32 @@ export function createTrainerTools({ transactions, external, coach, research, lo
     research_goal: async (_, { state }, ctx) => {
       const goal = state.draft ?? state.plan?.goal;
       if (!goal) return { answer: NO_GOAL(), state };
-      if (!research) return { answer: { type: 'research', text: RESEARCH_OFF }, state };
-      const r = await researchGoal(goal, ctx.asOf.slice(0, 4), research, log);
-      const next = state.draft ? { ...state, draft: r.goal } : { ...state, plan: { ...state.plan!, goal: r.goal } };
+      if (!goal.confirmed && goal.price > 0) return { answer: briefAnswer(goal, ctx, 'Confirm the brief to research this goal. '), state };
+      if (!research) return { answer: { ...showGoal(goal, ctx), type: 'research', text: RESEARCH_OFF }, state };
+      const r = await researchGoal(goal, new Date().getUTCFullYear().toString(), research, log);
+      const shown = showGoal(r.goal, ctx);
+      const previous = goal.confirmed ? simulate(goal, ctx).scenarios[0] : undefined;
+      const current = shown.scenarios?.[0];
+      const next = { ...state, draft: r.goal };
       const lines = [
         ...r.found.map((f) => `- ${f}`),
-        ...(r.missing.length ? [`- No source stated clearly: ${r.missing.join(', ')}. I kept my assumptions there.`] : []),
-        ...(r.goal.options.length ? ['Pick an option below to use its price.'] : [])
+        ...(r.missing.length ? [`- No source stated clearly: ${r.missing.join(', ')}. The plan keeps the amounts already shown for those costs.`] : []),
+        ...(r.failed.length ? [`- Exa could not check ${r.failed.join(', ')}. You can retry the search.`] : []),
+        ...(r.goal.options.length ? ['Pick a listing to see what its price would mean for your plan. Confirm the price and availability with the seller before committing.'] : []),
+        ...(previous && current && previous.monthlyNeeded !== current.monthlyNeeded
+          ? [`The same timeline now needs **${eur(current.monthlyNeeded)} a month** in savings (previously ${eur(previous.monthlyNeeded)}).`] : []),
+        ...(previous && current && previous.afterMonthly !== current.afterMonthly
+          ? [`After buying, the estimate is now **${eur(current.afterMonthly)} a month** (previously ${eur(previous.afterMonthly)}).`] : []),
+        ...(state.plan && !state.draft ? ['Review this draft and save it if you want to update your agreed plan.'] : []),
+        ...(!r.goal.confirmed && r.goal.price > 0 ? ['Confirm the draft budget and timeline to calculate your savings plan.'] : [])
       ];
-      const text = r.sources.length
-        ? `I researched this on the web with Exa (${r.sources.length} sources):\n${lines.join('\n')}`
-        : 'I searched the web with Exa but found nothing reliable for this goal. The plan still uses my assumptions.';
-      return { answer: { ...showGoal(r.goal, ctx), type: 'research', text, sources: r.sources }, state: next, sources: r.sources, activity: r.queries.map((q) => `Asked Exa: ${q}`) };
+      const intro = r.found.length
+        ? `I researched **${goal.name}** with Exa (${r.sources.length} sources).`
+        : r.failed.length === r.queries.length
+          ? 'Exa could not complete the searches for this goal.'
+          : 'The Exa search returned no verified figures for this goal.';
+      const text = [intro, ...lines].join('\n');
+      return { answer: { ...shown, type: 'research', text, sources: r.sources }, state: next, sources: r.sources, activity: r.queries.map((q) => `Asked Exa: ${q}`) };
     },
 
     choose_option: (args, { state }, ctx) => {
@@ -367,9 +423,19 @@ export function createTrainerTools({ transactions, external, coach, research, lo
       if (!goal) return { answer: NO_GOAL(), state };
       const picked = goal.options[need(optNumber(args, 'index', 0, Math.max(0, goal.options.length - 1)), 'index')];
       if (!picked) throw bad('There is no such option: run research_goal first');
-      const benchmark = { topic: 'price', label: picked.name, value: picked.price, unit: 'eur' as const, url: picked.url, sources: [] };
-      const draft: GoalDraft = { ...goal, price: picked.price, priceSource: 'research', benchmarks: [...goal.benchmarks.filter((b) => b.topic !== 'price'), benchmark] };
-      return { answer: showGoal(draft, ctx, `Using ${picked.name} at ${eur(picked.price)} (${host(picked.url)}). `), state: { ...state, draft } };
+      const benchmark = {
+        topic: 'price', label: 'Listing price', value: picked.price, unit: 'eur' as const, url: picked.url,
+        sources: picked.evidence ? [picked.evidence] : [],
+        ...(picked.evidence ? { quote: picked.evidence.snippet } : {})
+      };
+      const draft: GoalDraft = {
+        ...goal, price: picked.price, priceSource: 'research', selectedOptionUrl: picked.url,
+        benchmarks: [...goal.benchmarks.filter((b) => b.topic !== 'price'), benchmark]
+      };
+      return {
+        answer: { ...showGoal(draft, ctx, `Using ${picked.name} at ${eur(picked.price)} (${host(picked.url)}). `), ...(picked.evidence ? { sources: [picked.evidence] } : {}) },
+        state: { ...state, draft }
+      };
     },
 
     apply_benchmark: (args, session, ctx) => {
@@ -385,20 +451,26 @@ export function createTrainerTools({ transactions, external, coach, research, lo
       if (!source) throw bad('source_url must be a URL returned by search_web in this turn');
       const squash = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
       if (!squash(source.snippet).includes(squash(quote))) throw bad('quote must be copied word for word from that source');
-      if (!numbersIn(quote).some((n) => Math.abs(n - value) < 0.005)) throw bad('the quote must contain the value');
+      if (!evidenceQuote(quote, value, unit)) throw bad('the quote must state the value and its currency or unit');
 
       const monthly = unit === 'eur_per_year' ? round2(value / 12) : value;
-      const benchmark = { topic, label: TOPICS[topic].label, sources: [source], value, unit, quote, url };
+      const keptPrice = topic === 'price' && (goal.priceSource === 'user' || Boolean(goal.selectedOptionUrl));
+      const keptFigure = keptPrice || (topic === 'loan_rate' && goal.loan?.rateSource === 'user')
+        || goal.running.some((c) => c.id === topic && c.source === 'user');
+      const benchmarkTopic = keptPrice ? 'market_price' : topic;
+      const benchmark = { topic: benchmarkTopic, label: TOPICS[topic].label, sources: [source], value, unit, quote, url };
       const updated: GoalDraft = {
         ...goal,
-        benchmarks: [...goal.benchmarks.filter((b) => b.topic !== topic), benchmark],
-        ...(topic === 'price' ? { price: value, priceSource: 'research' as const } : {}),
-        ...(topic === 'loan_rate' && goal.loan ? { loan: { ...goal.loan, ratePct: value } } : {}),
-        running: goal.running.map((c) => (c.id === topic ? { ...c, monthly, source: 'research' as const, url } : c))
+        benchmarks: [...goal.benchmarks.filter((b) => b.topic !== benchmarkTopic), benchmark],
+        ...(topic === 'price' && !keptPrice ? { price: value, priceSource: 'research' as const } : {}),
+        ...(topic === 'loan_rate' && goal.loan && goal.loan.rateSource !== 'user' ? { loan: { ...goal.loan, ratePct: value, rateSource: 'research' as const, rateUrl: url } } : {}),
+        running: goal.running.map((c) => (c.id === topic && c.source !== 'user' ? { ...c, monthly, source: 'research' as const, url } : c))
       };
       const shown = unit === 'percent' ? `${value}%` : unit === 'eur' ? eur(value) : `${eur(monthly)} a month`;
-      const state = session.state.draft ? { ...session.state, draft: updated } : { ...session.state, plan: { ...session.state.plan!, goal: updated } };
-      return { answer: showGoal(updated, ctx, `Updated from ${host(url)}: ${TOPICS[topic].label.toLowerCase()} ${shown}. `), state };
+      const state = { ...session.state, draft: updated };
+      const intro = `From ${host(url)}, the ${TOPICS[topic].label.toLowerCase()} is ${shown}. `
+        + (keptFigure ? 'The plan keeps the amount already shown. ' : '');
+      return { answer: showGoal(updated, ctx, intro), state };
     },
 
     agree_plan: (args, { state }, ctx) => {
@@ -416,7 +488,7 @@ export function createTrainerTools({ transactions, external, coach, research, lo
         monitor: optBool(args, 'allow_recheck') ? { prices: true, conditions: true, spending: true } : NO_MONITORING, lastCheck: null
       };
       const text = `Agreed: save **${eur(plan.monthlySaving)} a month** until ${longDate(plan.targetDate)} for ${plan.goal.name}. `
-        + 'I set that aside before working out your safe-to-spend. What may I keep an eye on for you: prices, loan and insurance conditions, your spending?';
+        + `I set that aside before working out your safe-to-spend. When you open the plan, I can recheck prices${plan.goal.loan ? ', loan terms' : ''} and spending with your permission.`;
       const nextStep: NextStep = {
         title: 'Prepared next step', screen: 'transfer',
         detail: `Set up a monthly transfer of ${eur(plan.monthlySaving)} from your current account to savings, from ${longDate(ctx.cashflow.safe.until)}. Nothing is moved until you do it.`
@@ -428,7 +500,7 @@ export function createTrainerTools({ transactions, external, coach, research, lo
       if (!state.plan) return { answer: NO_PLAN(), state };
       const allow = need(optBool(args, 'allow'), 'allow');
       const plan = { ...state.plan, monitor: { prices: allow, conditions: allow, spending: allow } };
-      const text = allow ? 'Thanks. I will re-check prices, conditions and your spending for this plan.' : 'Understood. I will only re-check your plan when you ask.';
+      const text = allow ? `I’ll check prices${plan.goal.loan ? ', loan terms' : ''} and spending when you reopen this plan.` : 'I’ll re-check your plan only when you ask.';
       return { answer: { type: 'plan', text, plan }, state: { ...state, plan } };
     },
 
@@ -436,20 +508,21 @@ export function createTrainerTools({ transactions, external, coach, research, lo
       if (!state.plan) return { answer: NO_PLAN(), state };
       const monitor: Monitoring = { ...state.plan.monitor };
       for (const key of MONITOR_KEYS) monitor[key] = optBool(args, key) ?? monitor[key];
-      const watched = MONITOR_KEYS.filter((k) => monitor[k]);
       const plan = { ...state.plan, monitor };
-      const text = watched.length ? `I will keep an eye on: ${watched.join(', ')}.` : 'Understood. I will only re-check your plan when you ask.';
+      const watched = MONITOR_KEYS.filter((key) => monitor[key] && (key !== 'conditions' || plan.goal.loan)).map((key) => key === 'conditions' ? 'loan terms' : key);
+      const text = watched.length ? `When you reopen this plan, I’ll check ${watched.join(', ')}.` : 'I’ll re-check your plan only when you ask.';
       return { answer: { type: 'plan', text, plan }, state: { ...state, plan } };
     },
 
     choose_path: (args, { state }, ctx) => {
       if (!state.plan) return { answer: NO_PLAN(), state };
       const id = need(optEnum(args, 'id', ['less', 'sooner', 'buffer', 'later'] as const), 'id');
-      const now = planToday(state.plan, ctx);
+      const goal = state.plan.lastCheck?.proposedGoal ?? state.plan.goal;
+      const now = planToday(state.plan, ctx, goal);
       const choice = planChoices(now, ctx.asOf).find((c) => c.id === id);
       if (!choice) throw bad(`"${id}" is not available for this plan right now`);
       const plan: AgreedPlan = {
-        ...state.plan, monthlySaving: choice.monthlySaving, bufferMonthly: choice.bufferMonthly, targetDate: choice.targetDate,
+        ...state.plan, goal, monthlySaving: choice.monthlySaving, bufferMonthly: choice.bufferMonthly, targetDate: choice.targetDate,
         capacityAtAgreement: now.monthlyCapacity,
         lastCheck: { checkedOn: ctx.asOf, status: 'on_track', changes: [`You chose: ${choice.label.toLowerCase()}.`] }
       };
@@ -459,8 +532,13 @@ export function createTrainerTools({ transactions, external, coach, research, lo
     recheck_plan: async (_, { state }, ctx) => {
       if (!state.plan) return { answer: NO_PLAN(), state };
       // What the user approved to be monitored is looked up again on the web.
-      const watch = research ? await watchGoal(state.plan.goal, state.plan.monitor, ctx.asOf.slice(0, 4), research, log) : null;
-      const { plan, answer } = checkPlan(state.plan, ctx, watch?.changes);
+      const watch = research ? await watchGoal(state.plan.goal, state.plan.monitor, String(new Date().getUTCFullYear()), research, log) : null;
+      const gaps = [
+        ...(watch?.missing.length ? [`No usable source for ${watch.missing.join(', ')}. The saved assumptions still apply there.`] : []),
+        ...(watch?.failed.length ? [`Exa could not complete the check for ${watch.failed.join(', ')}. You can try again.`] : []),
+        ...(!research && (state.plan.monitor.prices || (state.plan.monitor.conditions && state.plan.goal.loan)) ? ['Live Exa checks are unavailable. Market assumptions were kept.'] : [])
+      ];
+      const { plan, answer } = checkPlan(state.plan, ctx, watch?.changes, marketProposal(state.plan.goal, watch), gaps);
       const followUps = [...(watch?.followUps ?? []), ...(answer.followUps ?? [])];
       return { answer: { ...answer, followUps, ...(watch?.sources.length ? { sources: watch.sources } : {}) }, state: { ...state, plan }, sources: watch?.sources, activity: watch?.queries.map((q) => `Asked Exa: ${q}`) };
     },
@@ -530,6 +608,7 @@ export const TOOL_SPECS: ToolSpec[] = [
   }, ['kind', 'name']),
   spec('confirm_brief', 'The user confirmed the brief. Runs the simulation. Call only after the user said the brief is right.'),
   spec('what_if', 'Change the current goal (or estimate a spending cut when there is no goal) and recalculate.', {
+    name: text('New public product description such as used Toyota Yaris Hybrid, without personal data. Changing it requires the user to confirm a revised brief.'),
     add_months: num('Wait this many more months (negative = sooner).'),
     months: num('Set the months until the purchase.'),
     price: num('A different price in euros.'),
@@ -560,7 +639,7 @@ export const TOOL_SPECS: ToolSpec[] = [
   }),
   spec('set_recheck_permission', 'Allow or stop all monitoring of the plan at once.', { allow: bool('The permission.') }, ['allow']),
   spec('set_monitoring', 'Record what the user approved the trainer to keep an eye on for the plan.', {
-    prices: bool('Prices of the goal.'), conditions: bool('Loan and insurance conditions.'), spending: bool("The user's own spending.")
+    prices: bool('Prices of the goal.'), conditions: bool('Loan terms when the plan uses a loan.'), spending: bool("The user's own spending.")
   }),
   spec('choose_path', 'Apply the choice the user made after a re-check found a change.', {
     id: choice(['less', 'sooner', 'buffer', 'later'], 'less = contribute less, sooner = reach the goal sooner, buffer = keep a larger buffer, later = reach the goal later.')
