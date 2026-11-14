@@ -1,0 +1,262 @@
+/* Kaiku · S-mobiili preview — one stylesheet, ordered from outside in:
+   1 tokens · 2 base · 3 preview page · 4 phone frame · 5 header and tabs · 6 building blocks
+   7 forms and buttons · 8 bank screens · 9 Kaiku card · 10 assistant · 11 3D City · 12 modal
+   Visual language follows the S-mobiili UX reference (unofficial study). */
+
+/* 1. Tokens */
+:root {
+  --green: #00aa4f;
+  --deep: #087339;
+  --mint: #eaf8ed;
+  --line: #e4e9e4;
+  --text: #202c24;
+  --muted: #77827b;
+  --pos: #079643;
+  --shadow: 0 14px 45px #142b1821;
+}
+
+/* 2. Base */
+* { box-sizing: border-box; }
+body { margin: 0; background: #e8eee9; color: var(--text); font-family: Inter, Arial, Helvetica, sans-serif; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+button:focus-visible { outline: 3px solid #76cfa0; outline-offset: 2px; }
+h1, h2, h3 { margin: 0; }
+.ico { display: block; flex: none; }
+
+/* 3. Preview page: mode switcher and stage (outside the phone) */
+.topbar { display: flex; justify-content: space-between; align-items: center; padding: 12px 20px; background: #fff; border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 2; }
+.modes { display: flex; gap: 6px; }
+.modes button { padding: 8px 12px; border: 1px solid #cfdfd1; background: #fff; border-radius: 11px; font-size: 14px; font-weight: 700; color: var(--deep); }
+.modes button[aria-pressed="true"] { background: var(--green); color: #fff; border-color: var(--green); }
+.stage { display: flex; justify-content: center; align-items: flex-start; flex-wrap: wrap; gap: 40px; padding: 18px 24px 24px; }
+.pair { display: flex; flex-direction: column; align-items: center; gap: 10px; transform-origin: top center; }
+.caption { font-size: 13px; font-weight: 700; color: #4b6052; }
+
+/* 4. Phone frame: Xiaomi 14 logical viewport (1200×2670 at 3x ≈ 400×890, 20:9).
+   main.js zooms the whole device down when the window is shorter. */
+.phone { position: relative; width: 420px; height: 910px; display: flex; flex-direction: column; overflow: hidden; background: #fff; border: 10px solid #1a1f1c; border-radius: 40px; box-shadow: var(--shadow); }
+.status-bar { height: 30px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 6px 24px 0; font-size: 11px; font-weight: 800; background: #fff; }
+.sb-icons { display: flex; gap: 3px; align-items: center; }
+.sb-icons i { width: 4px; height: 4px; background: #202c24; border-radius: 1px; }
+.sb-icons b { width: 18px; height: 9px; margin-left: 5px; border: 1.5px solid #202c24; border-radius: 2px; }
+.screen { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; background: #f7faf7; scrollbar-width: thin; }
+.content { display: flex; flex-direction: column; padding: 17px 17px 80px; }
+@media (max-width: 450px) {
+  .phone { width: 100%; height: 100dvh; border: 0; border-radius: 0; }
+}
+
+/* 5. Permanent header ("S-mobiili" + house both lead home), sub-screen crumb, tab bar */
+.appbar { position: relative; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 56px; padding: 8px 14px 8px 19px; background: #fff; border-bottom: 1px solid var(--line); }
+.brandlink { display: flex; align-items: center; gap: 6px; padding: 4px 0; background: none; border: 0; color: var(--green); }
+.brand { font-size: 20px; font-weight: 900; letter-spacing: -.7px; color: var(--green); }
+.brand-home { display: flex; color: var(--green); }
+.brandlink:hover .brand, .brandlink:hover .brand-home { color: var(--deep); }
+.header-actions { display: flex; gap: 8px; flex: none; }
+.hicon { width: 38px; height: 38px; display: grid; place-items: center; background: none; border: 0; border-radius: 8px; color: var(--deep); }
+.hicon:hover { background: #f0f6f1; }
+.crumb { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: #fff; border-bottom: 1px solid var(--line); font-size: 16px; font-weight: 800; }
+.crumb-back { width: 32px; height: 32px; display: grid; place-items: center; background: none; border: 0; border-radius: 8px; color: var(--deep); }
+.crumb-back:hover { background: #f0f6f1; }
+.tabbar { flex: none; display: flex; justify-content: space-around; gap: 2px; min-height: 64px; padding: 6px 4px 10px; background: #fff; border-top: 1px solid var(--line); }
+.tabbar button { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 4px 2px; background: transparent; border: 0; border-radius: 8px; color: #8d9991; font-size: 10.5px; font-weight: 700; }
+.tabbar button .ico { width: 23px; height: 23px; }
+.tabbar button.on { color: var(--green); }
+/* Bank-only mode: the existing app's raised green "+" (Pay) in the middle of the tab bar. */
+.tabbar button.raised { justify-content: flex-end; }
+.tabbar button.raised .raise { width: 46px; height: 46px; margin-top: -24px; display: grid; place-items: center; color: #fff; background: var(--green); border-radius: 50%; box-shadow: 0 3px 8px #17783a44; }
+.tabbar button.raised .raise .ico { width: 22px; height: 22px; stroke-width: 2.4; }
+
+/* 6. Building blocks: titles, cards, lists, rows, hero, bars */
+.subtitle { margin-bottom: 5px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.title { margin: 2px 0 18px; font-size: 24px; font-weight: 850; }
+.section-title { display: flex; justify-content: space-between; align-items: center; margin: 22px 0 11px; font-size: 15px; font-weight: 800; }
+.link { padding: 5px 0; background: none; border: 0; color: var(--deep); font-size: 12px; font-weight: 750; }
+.section-title .link { padding: 5px; }
+.card, .list { margin-bottom: 12px; overflow: hidden; background: #fff; border: 1px solid var(--line); border-radius: 15px; }
+.padded { padding: 16px; }
+.row { display: flex; align-items: center; gap: 13px; width: 100%; min-height: 60px; padding: 12px 15px; background: #fff; border: 0; border-bottom: 1px solid var(--line); text-align: left; font-size: 14px; }
+.row:last-child { border-bottom: 0; }
+.row.click:hover { background: #f2faf4; }
+.glyph { width: 40px; height: 40px; flex: none; display: grid; place-items: center; background: #e9f7ed; border-radius: 10px; color: var(--green); }
+.rmain { flex: 1; min-width: 0; }
+.rtitle { font-size: 14px; font-weight: 750; }
+.rsub { margin-top: 5px; font-size: 12px; color: var(--muted); }
+.amount { font-size: 14px; font-weight: 800; text-align: right; white-space: nowrap; }
+.amount.pos { color: var(--pos); }
+.chev { margin-left: 3px; font-size: 21px; color: #98a89b; }
+.tag { margin-left: 6px; padding: 2px 7px; font-size: 11px; font-weight: 800; color: #148144; background: #e8f6ec; border-radius: 6px; }
+.listitem { display: flex; justify-content: space-between; gap: 10px; padding: 14px 2px; border-bottom: 1px solid var(--line); font-size: 14px; }
+.listitem:last-child { border-bottom: 0; }
+.total-line { display: flex; justify-content: space-between; padding: 12px 14px; font-weight: 800; }
+.divider { height: 1px; margin: 12px 0; background: var(--line); }
+.hero { margin-bottom: 13px; padding: 20px; color: #fff; background: linear-gradient(135deg, #07a84f, #078540); border-radius: 16px; }
+.hero .small { opacity: .85; font-size: 12px; color: #fff; }
+.hero strong { display: block; margin: 11px 0; font-size: 33px; letter-spacing: -.6px; }
+.hero .side { display: flex; justify-content: space-between; align-items: center; font-size: 12px; }
+.light-hero { margin-bottom: 12px; padding: 16px; background: #eff9ef; border: 1px solid #d5efda; border-radius: 15px; }
+.bigline { margin: 6px 0; font-size: 31px; font-weight: 850; color: var(--deep); }
+.balance-label { font-size: 13px; color: var(--muted); }
+.balance-amount { margin-top: 2px; font-size: 28px; font-weight: 850; color: var(--deep); }
+.balance-row { display: flex; justify-content: space-between; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 14px; }
+.bar { height: 9px; margin: 6px 0 15px; overflow: hidden; background: #e9f0eb; border-radius: 15px; }
+.bar span { display: block; height: 100%; background: #08b556; border-radius: 15px; }
+.bars { display: flex; flex-direction: column; gap: 6px; }
+.bar-row { display: grid; grid-template-columns: 100px 1fr 60px; gap: 8px; align-items: center; font-size: 12px; }
+.bar-row span:first-child { white-space: nowrap; }
+.bar-track { height: 10px; overflow: hidden; background: #e9f0eb; border-radius: 15px; }
+.bar-fill { height: 100%; background: #08b556; border-radius: 15px; }
+.linechart { width: 100%; height: 120px; }
+.linechart svg { display: block; width: 100%; height: 100%; }
+.warn { padding: 12px; font-size: 12px; line-height: 1.5; color: #8b6715; background: #fff9e6; border: 1px solid #f4e5ac; border-radius: 11px; }
+.foot, .small, .muted { font-size: 12px; color: var(--muted); }
+.center { text-align: center; }
+
+/* 7. Buttons and forms */
+.btn { padding: 11px 13px; font-size: 13px; font-weight: 750; text-align: center; color: var(--deep); background: #fff; border: 1px solid #cbe5d1; border-radius: 11px; }
+.btn.primary { color: #fff; background: var(--green); border-color: var(--green); }
+.btn.block { width: 100%; margin: 8px 0; }
+.btn.small { padding: 7px 10px; }
+.actions { display: flex; flex-wrap: wrap; gap: 9px; margin-bottom: 8px; }
+.actions .btn { flex: 1; }
+.two, .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+.tile { min-height: 104px; padding: 14px; text-align: left; font-size: 14px; font-weight: 750; background: #fff; border: 1px solid var(--line); border-radius: 14px; }
+.tile .small { margin-top: 6px; font-weight: 600; }
+.formlabel { display: block; margin: 14px 0 5px; font-size: 12px; font-weight: 700; color: #62776a; }
+.field { width: 100%; padding: 11px 12px; font-size: 15px; color: var(--text); background: #fff; border: 1px solid #dae6db; border-radius: 10px; }
+
+/* 8. Bank screens */
+.banner { display: flex; justify-content: space-between; width: 100%; margin-bottom: 12px; padding: 13px 15px; text-align: left; font-size: 14px; font-weight: 800; color: var(--text); background: #b4f7ba; border: 0; border-radius: 9px; }
+.cardart { position: relative; display: flex; flex-direction: column; justify-content: space-between; height: 194px; margin-bottom: 12px; padding: 20px; overflow: hidden; color: #fff; background: linear-gradient(120deg, #00ad50, #04863f); border-radius: 16px; box-shadow: 0 10px 24px #1ca35630; }
+.cardnum { font-size: 14px; letter-spacing: 2px; }
+.receipt { margin: 10px 0; padding: 18px; background: #fff; border: 1px dashed #9cae9f; border-radius: 9px; }
+.receipt-head { text-align: center; font-size: 20px; font-weight: 850; color: var(--green); }
+
+/* 9. Kaiku card on Home: one insight, a way into the assistant, a live City thumbnail */
+.k-card { display: grid; grid-template-columns: 1fr 112px; margin: 10px 0 12px; overflow: hidden; background: #fff; border: 1px solid #cfe8d6; border-radius: 15px; }
+.k-card-main { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 14px 14px 13px; text-align: left; background: linear-gradient(135deg, #f1faf3, #fff); border: 0; }
+.k-card-label { --k-ink: #f1faf3; display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 800; color: var(--deep); }
+.k-card-label .ico { color: var(--green); }
+.k-card-text { font-size: 15px; font-weight: 700; line-height: 1.3; color: var(--text); }
+.k-card-text b { font-weight: 850; color: var(--deep); }
+.k-card-cta { display: flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 800; color: var(--green); }
+.k-card-city { position: relative; padding: 0; background: #f4faf5; border: 0; border-left: 1px solid #e3efe6; }
+.k-card-city canvas { display: block; width: 100%; height: 100%; min-height: 104px; }
+.k-card-city span { position: absolute; left: 0; right: 0; bottom: 6px; text-align: center; font-size: 10px; font-weight: 800; color: var(--deep); }
+
+/* 10. Assistant: round launcher, intro bubble, input sliding out of the launcher,
+       "Welcome!" with compact questions, then the conversation above the input */
+.k-launcher { --k-ink: #0a9f4f; position: absolute; right: 16px; bottom: 80px; z-index: 30; width: 56px; height: 56px; display: grid; place-items: center; padding: 0; color: #fff; background: transparent; border: 0; border-radius: 50%; transition: transform .18s ease; }
+.k-launcher:hover { transform: translateY(-2px); }
+.k-launcher .k-ico { position: absolute; inset: 0; display: grid; place-items: center; transition: transform .25s ease, opacity .2s ease; }
+.k-launcher .k-ico-close { opacity: 0; transform: rotate(-90deg) scale(.6); border-radius: 50%; background: linear-gradient(145deg, #0bb85a, #078540); box-shadow: 0 8px 22px #0b6b3555, 0 0 0 4px #ffffffd9; }
+.k-launcher.open .k-ico-mark { opacity: 0; transform: rotate(90deg) scale(.6); }
+.k-launcher.open .k-ico-close { opacity: 1; transform: none; }
+/* Aurora orb: the sky canvas fills the button, the waves canvas overflows it (button = middle 64%) */
+.k-orb { position: relative; display: block; width: 100%; height: 100%; }
+.k-orb-sky { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 50%; background: #f4fbf6; box-shadow: 0 6px 18px #0b6b3526; }
+.k-orb-waves { position: absolute; left: -28.125%; top: -28.125%; width: 156.25%; height: 156.25%; pointer-events: none; }
+
+.k-teaser { position: absolute; right: 18px; bottom: 148px; z-index: 31; display: flex; flex-direction: column; gap: 4px; max-width: 270px; padding: 12px 14px; text-align: left; font-size: 13px; line-height: 1.45; color: #fff; background: var(--deep); border: 0; border-radius: 16px 16px 4px 16px; box-shadow: 0 10px 26px #0b3a2033; opacity: 0; pointer-events: none; transform: translateY(10px) scale(.92); transform-origin: bottom right; transition: opacity .35s ease, transform .35s cubic-bezier(.22, 1, .36, 1); }
+.k-teaser b { font-size: 14.5px; font-weight: 850; }
+.k-teaser::after { content: ""; position: absolute; right: 20px; bottom: -8px; width: 16px; height: 16px; background: var(--deep); border-radius: 3px; transform: rotate(45deg); }
+.k-teaser.show { opacity: 1; pointer-events: auto; transform: none; }
+
+.k-layer { position: absolute; inset: 86px 0 0 0; z-index: 29; pointer-events: none; }
+.k-layer:empty { display: none; }
+.k-layer.open > * { pointer-events: auto; }
+
+.k-input { position: absolute; right: 80px; bottom: 82px; display: flex; align-items: center; gap: 6px; width: calc(100% - 100px); height: 52px; padding: 0 5px 0 16px; background: #fff; border: 1px solid #cfe8d6; border-radius: 26px; box-shadow: 0 10px 28px #0b3a2026; opacity: 0; clip-path: inset(0 0 0 100% round 26px); transition: clip-path .5s cubic-bezier(.16, 1, .3, 1), opacity .2s ease; }
+.k-layer.open .k-input { opacity: 1; clip-path: inset(0 0 0 0 round 26px); }
+.k-input input { flex: 1; min-width: 0; font-size: 14px; background: none; border: 0; outline: 0; }
+.k-input button { flex: none; width: 42px; height: 42px; display: grid; place-items: center; color: #fff; background: var(--green); border: 0; border-radius: 50%; }
+
+.k-stack { position: absolute; left: 16px; right: 16px; bottom: 146px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; max-height: calc(100% - 170px); padding: 4px 2px 10px; overflow: auto; scrollbar-width: none; opacity: 0; transform: translateY(10px); transition: transform .45s cubic-bezier(.16, 1, .3, 1) .18s, opacity .3s ease .18s; }
+.k-layer.open .k-stack { opacity: 1; transform: none; }
+.k-stack:not(.started) { gap: 6px; padding: 0 0 2px; overflow: visible; }
+.k-stack.started { align-items: flex-end; }
+.k-hello { padding: 0 4px; font-size: 16px; font-weight: 850; color: var(--deep); text-shadow: 0 0 6px #fff, 0 0 2px #fff; }
+/* Questions run as text: each one is framed, sits inline, and when it does not fit the frame
+   breaks at the edge and continues on the next line (box-decoration-break). */
+.k-flow { margin: 0; font-size: 12px; font-weight: 650; line-height: 2.05; color: #1d3a28; }
+.k-q { padding: 4px 8px; margin-right: 2px; cursor: pointer; background: #fff; border: 1px solid #cfe8d6; border-radius: 8px; box-shadow: 0 2px 8px #0b3a2014; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+.k-q:hover { background: #f1faf3; border-color: #9fd3b0; }
+.k-q:focus-visible { outline: 2px solid #76cfa0; outline-offset: 1px; }
+.k-msgs { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.k-msg { max-width: 90%; padding: 9px 11px; font-size: 13px; line-height: 1.45; border-radius: 12px; animation: kin .22s ease; }
+.k-msg.user { align-self: flex-end; color: #fff; background: var(--green); border-bottom-right-radius: 4px; }
+.k-msg.bot { align-self: flex-start; display: flex; flex-direction: column; gap: 6px; background: #fff; border: 1px solid #e1ece4; border-bottom-left-radius: 4px; box-shadow: 0 6px 18px #0b3a201a; }
+.k-msg .figure { font-size: 19px; font-weight: 850; color: var(--deep); }
+.k-msg .range { font-size: 11px; color: var(--muted); }
+.k-msg.typing { flex-direction: row; gap: 4px; padding: 12px; }
+.k-msg.typing i { width: 6px; height: 6px; background: #9fc9ad; border-radius: 3px; animation: kdot 1s infinite ease-in-out; }
+.k-msg.typing i:nth-child(2) { animation-delay: .15s; }
+.k-msg.typing i:nth-child(3) { animation-delay: .3s; }
+.k-suggest { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.k-suggest button { max-width: 94%; padding: 8px 11px; text-align: left; font-size: 12px; font-weight: 650; line-height: 1.3; color: #1d3a28; background: #fff; border: 1px solid #cfe8d6; border-radius: 12px; box-shadow: 0 4px 12px #0b3a2014; }
+.k-suggest button:hover { background: #f1faf3; border-color: #9fd3b0; }
+.k-action { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; padding: 7px 10px; font-size: 12.5px; font-weight: 800; color: var(--deep); background: #f1faf3; border: 1px solid #bfe2c9; border-radius: 10px; }
+.k-action:hover { background: #e3f5e8; }
+.letter { margin-bottom: 6px; padding: 8px; white-space: pre-wrap; font-size: 12px; background: #f8fbf8; border: 1px solid var(--line); border-radius: 8px; }
+@keyframes kdot { 0%, 80%, 100% { opacity: .3; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }
+@keyframes kin { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+/* 11. 3D Financial City: scene first, then the timeline strip, then scenario controls */
+.city-page { display: flex; flex-direction: column; }
+.city-stage { position: relative; height: 360px; background: radial-gradient(120% 90% at 50% 20%, #fff 0%, #eef6ef 70%, #e3efe6 100%); border-bottom: 1px solid #dfece2; }
+.city-canvas { display: block; width: 100%; height: 100%; cursor: grab; }
+.city-canvas:active { cursor: grabbing; }
+.city-readout { position: absolute; right: 12px; bottom: 10px; padding: 4px 9px; font-size: 13px; font-weight: 850; color: var(--deep); background: rgba(255, 255, 255, .85); border: 1px solid #d5efda; border-radius: 8px; }
+.timeline { --past: 0px; position: relative; height: 60px; overflow: hidden; background: #fff; border-bottom: 1px solid var(--line); cursor: grab; touch-action: pan-y; user-select: none; }
+.timeline:active { cursor: grabbing; }
+.timeline:focus { outline: none; }
+.timeline:focus-visible { box-shadow: inset 0 0 0 2px #76cfa0; }
+/* soft fade at both ends so the ruler slides in and out instead of being cut */
+.timeline::before, .timeline::after { content: ""; position: absolute; top: 0; bottom: 0; z-index: 3; width: 44px; pointer-events: none; }
+.timeline::before { left: 0; background: linear-gradient(to right, #fff, #fff0); }
+.timeline::after { right: 0; background: linear-gradient(to left, #fff, #fff0); }
+/* the time already travelled, from today to the cursor */
+.tl-past { position: absolute; top: 0; bottom: 0; right: 50%; width: min(var(--past), 50%); background: linear-gradient(to right, #00aa4f00, #00aa4f14); border-bottom: 2px solid #00aa4f55; }
+.tl-track { position: absolute; left: 50%; top: 0; bottom: 0; will-change: transform; }
+.tl-days { position: absolute; left: 0; right: 0; bottom: 12px; height: 12px;
+  background:
+    repeating-linear-gradient(to right, #9fb5a6 0 1px, transparent 1px 42px) left bottom / 100% 12px no-repeat,
+    repeating-linear-gradient(to right, #d6e2da 0 1px, transparent 1px 6px) left bottom / 100% 6px no-repeat; }
+.tl-month, .tl-today { position: absolute; bottom: 12px; width: 1px; height: 22px; background: #5f8a6d; }
+.tl-month b, .tl-today b { position: absolute; left: 5px; bottom: 11px; font-size: 10px; font-weight: 750; letter-spacing: .02em; color: #4d7a5d; white-space: nowrap; }
+.tl-today { left: 0; background: var(--green); }
+.tl-today b { color: var(--deep); }
+.tl-track em { position: absolute; bottom: 30px; width: 8px; height: 8px; margin-left: -4px; background: #c98a2b; transform: rotate(45deg); }
+.tl-now { position: absolute; left: 50%; top: 0; bottom: 6px; z-index: 2; width: 2px; margin-left: -1px; background: var(--green); pointer-events: none; }
+.tl-now::before { content: ""; position: absolute; top: 0; left: -5px; border: 6px solid transparent; border-top: 7px solid var(--green); border-bottom: 0; }
+.city-caption { position: absolute; left: 12px; top: 10px; right: 90px; display: flex; flex-direction: column; gap: 2px; pointer-events: auto; }
+.city-caption b { font-size: 15px; font-weight: 850; line-height: 1.25; color: var(--deep); text-shadow: 0 0 6px #fff; }
+.city-caption span { font-size: 11.5px; font-weight: 600; color: #4b6052; }
+.city-info { gap: 8px; padding-top: 12px; }
+.city-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.city-controls .formlabel { margin-top: 0; }
+.city-controls .field { padding: 9px 10px; font-size: 13px; }
+.events { display: flex; flex-direction: column; gap: 4px; padding: 4px 2px; font-size: 12.5px; }
+.events .ev { display: flex; gap: 8px; color: var(--muted); }
+.events .ev span { flex: none; width: 86px; font-weight: 700; }
+.events .ev.past { color: var(--text); }
+
+/* 12. Modal */
+.modal-wrap { position: absolute; inset: 0; z-index: 40; display: grid; place-items: center; padding: 22px; background: #071b1178; }
+.modal { display: flex; flex-direction: column; gap: 10px; width: 100%; padding: 23px; background: #fff; border-radius: 18px; box-shadow: 0 12px 50px #0003; }
+.modal p { margin: 0; font-size: 13px; line-height: 1.5; color: #58685c; }
+/* Soft fade behind the open assistant (no frame): keeps the questions readable over any screen. */
+.k-layer::before { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 330px; background: linear-gradient(to top, rgba(247, 250, 247, .97) 0, rgba(247, 250, 247, .92) 65%, rgba(247, 250, 247, 0) 100%); opacity: 0; transition: opacity .35s ease; pointer-events: none; }
+.k-layer.open::before { opacity: 1; }
+/* Full chat: from the second question the layer covers the whole screen in white */
+.k-layer { transition: inset .35s cubic-bezier(.16, 1, .3, 1); }
+.k-layer.full { inset: 30px 0 0 0; z-index: 32; }
+.k-layer.full::before { top: 0; height: auto; background: #fff; }
+.k-layer.full .k-stack { top: 64px; bottom: 84px; max-height: none; }
+.k-layer.full .k-input { right: 16px; bottom: 18px; width: calc(100% - 32px); }
+.k-head { position: absolute; top: 0; left: 0; right: 0; z-index: 1; display: flex; align-items: center; gap: 8px; height: 56px; padding: 0 12px 0 6px; background: #fff; border-bottom: 1px solid #e6efe8; animation: kin .25s ease; }
+.k-head b { font-size: 16px; font-weight: 850; color: var(--deep); }
+.k-back { width: 40px; height: 40px; display: grid; place-items: center; color: var(--deep); background: none; border: 0; border-radius: 50%; cursor: pointer; }
+.k-back:hover { background: #f1faf3; }
+.k-head-orb { width: 28px; height: 28px; }
+.k-launcher.hidden { opacity: 0; pointer-events: none; }

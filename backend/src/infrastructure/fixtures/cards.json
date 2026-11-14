@@ -1,0 +1,6 @@
+{
+  "cards": [
+    { "id": "debit", "name": "Rewards Visa Debit", "last4": "1234", "status": "active" }
+  ],
+  "limits": { "dailyPurchase": 1000, "cashWithdrawal": 400, "onlinePurchases": true, "abroad": true }
+}

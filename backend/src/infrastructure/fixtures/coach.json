@@ -1,0 +1,133 @@
+{
+  "safeToSpend": {
+    "amount": 142,
+    "until": "Sunday"
+  },
+  "suggestions": [
+    {
+      "id": "stop_food",
+      "intent": "forecast",
+      "text": "What happens if I stop ordering food delivery?",
+      "short": "Stop food delivery?",
+      "note": "Food delivery went up 40% this month"
+    },
+    {
+      "id": "mortgage_rate",
+      "intent": "forecast",
+      "text": "What happens if my mortgage interest rate goes up?",
+      "short": "Mortgage rate goes up?",
+      "note": "Rate review on 1 March"
+    },
+    {
+      "id": "breakdown",
+      "intent": "fact",
+      "text": "Where is my money going?",
+      "short": "Where does my money go?",
+      "note": "Last 30 days, by category"
+    }
+  ],
+  "rules": {
+    "rent_increase": {
+      "text": "Demo rule: a landlord normally has to give written notice before raising rent, often at least three months ahead. Check the current local tenancy law before you act.",
+      "letter": {
+        "subject": "Request for information on rent increase",
+        "body": "Dear landlord,\n\nI have received notice of a rent increase from €850 to €920 per month. Please confirm the effective date, the legal basis for the change, and that the required notice period has been respected.\n\nKind regards,\nAlex"
+      }
+    }
+  },
+  "scenarios": {
+    "stop_food": {
+      "id": "stop_food",
+      "title": "Stop food delivery",
+      "headline": "+€540 in your cushion after six months",
+      "range": "Range €430–€650",
+      "confidence": "medium",
+      "horizonMonths": 6,
+      "summary": "Cutting €150 a month of food delivery: about 40% goes to groceries and 60% to your cushion.",
+      "events": [
+        {
+          "day": 45,
+          "label": "Mid-January: unexpected expense, about €300"
+        }
+      ],
+      "city": {
+        "start": {
+          "mandatory": 1601,
+          "unexpected": 300,
+          "small": 175,
+          "cushion": 600,
+          "debt": 8400
+        },
+        "later": {
+          "mandatory": 1601,
+          "unexpected": 300,
+          "small": 25,
+          "cushion": 1140,
+          "debt": 8400
+        }
+      }
+    },
+    "mortgage_rate": {
+      "id": "mortgage_rate",
+      "title": "Interest rate up 0.5 pp",
+      "headline": "Cushion falls to about €408",
+      "range": "Range €370–€450",
+      "confidence": "low",
+      "horizonMonths": 6,
+      "summary": "A 0.5 pp rise at the 1 March review adds about €32 a month to your mortgage payment. The change applies from the review date, not today.",
+      "events": [
+        {
+          "day": 107,
+          "label": "1 March: interest rate review"
+        }
+      ],
+      "city": {
+        "start": {
+          "mandatory": 1601,
+          "unexpected": 300,
+          "small": 175,
+          "cushion": 600,
+          "debt": 8400
+        },
+        "later": {
+          "mandatory": 1633,
+          "unexpected": 300,
+          "small": 175,
+          "cushion": 408,
+          "debt": 8400
+        }
+      }
+    },
+    "cut_leisure": {
+      "id": "cut_leisure",
+      "title": "Skip cinema and football for 2 months",
+      "headline": "+€50 in your cushion in two months",
+      "range": "Range €40–€60",
+      "confidence": "high",
+      "horizonMonths": 2,
+      "summary": "Skipping cinema, theatre and football for two months frees about €50.",
+      "events": [
+        {
+          "day": 30,
+          "label": "Next football fixture"
+        }
+      ],
+      "city": {
+        "start": {
+          "mandatory": 1601,
+          "unexpected": 300,
+          "small": 175,
+          "cushion": 600,
+          "debt": 8400
+        },
+        "later": {
+          "mandatory": 1601,
+          "unexpected": 300,
+          "small": 150,
+          "cushion": 650,
+          "debt": 8400
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "loans": [
+    { "id": "mortgage", "name": "Mortgage", "balance": 124500, "rate": 3.45, "payment": 680, "nextDate": "2026-12-01", "endYear": 2046 }
+  ]
+}

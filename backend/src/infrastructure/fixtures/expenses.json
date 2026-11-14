@@ -1,0 +1,16 @@
+{
+  "mandatory": [
+    { "name": "Rent", "amount": 850 },
+    { "name": "Mortgage", "amount": 680 },
+    { "name": "Electricity", "amount": 46.1 },
+    { "name": "Phone bill", "amount": 24.9 }
+  ],
+  "priority": [
+    { "name": "Groceries (3-month average)", "amount": 240 },
+    { "name": "Transport (3-month average)", "amount": 90 }
+  ],
+  "flexible": [
+    { "name": "Food delivery (3-month average)", "amount": 150, "changePct": 40 },
+    { "name": "Leisure: cinema, theatre, football", "amount": 25 }
+  ]
+}
