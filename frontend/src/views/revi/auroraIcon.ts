@@ -14,6 +14,7 @@ varying vec2 uv;
 uniform float t;
 uniform vec2 res;
 uniform float brand;
+uniform float wide;
 
 float hash(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
 float noise(vec2 p){
@@ -96,6 +97,8 @@ float spruceRow(vec2 p, float freq, float seed, float lift, float hMin, float hM
 void main(){
   vec2 p = uv;                                          // -1..1, y up
   float r = length(p);
+  // wide: a full rectangle (splash screen) instead of the round button, no rim or disc mask
+  if (wide > 0.5) { p.x *= res.x / res.y; r = 0.0; }
   // night sky: balanced deep green, a touch lighter near the horizon
   vec3 sky = mix(vec3(0.055, 0.21, 0.18), vec3(0.045, 0.16, 0.17), smoothstep(-0.9, 0.9, p.y));
   // stars
@@ -110,6 +113,11 @@ void main(){
   float aa0 = 2.0 / res.x;
   float disc0 = smoothstep(1.0, 1.0 - aa0, r);
   // flat UI palettes: no scene, only the aurora ribbon on the app's own surfaces
+  if (brand > 5.5) {          // overlay: only the light, transparent elsewhere (laid over the bank splash)
+    float Lo = pow(1.0 - exp(-dot(aur, vec3(0.3, 0.6, 0.1)) * 2.2), 0.9) * 0.6;
+    gl_FragColor = vec4(vec3(0.9, 1.0, 0.95) * Lo, Lo);
+    return;
+  }
   if (brand > 2.5) {
     float L = 1.0 - exp(-dot(aur, vec3(0.3, 0.6, 0.1)) * 1.5);
     L *= smoothstep(1.0, 0.75, r);
@@ -176,9 +184,9 @@ void main(){
   gl_FragColor = vec4(col * disc, disc);
 }`;
 
-export type AuroraPalette = 'night' | 'deep' | 'brand' | 'clean' | 'ink' | 'light';
+export type AuroraPalette = 'night' | 'deep' | 'brand' | 'clean' | 'ink' | 'light' | 'overlay';
 
-export function mountAurora(canvas: HTMLCanvasElement, { palette = 'night' }: { palette?: AuroraPalette } = {}): () => void {
+export function mountAurora(canvas: HTMLCanvasElement, { palette = 'night', wide = false }: { palette?: AuroraPalette; wide?: boolean } = {}): () => void {
   const gl = canvas.getContext('webgl', { premultipliedAlpha: true, antialias: true, alpha: true });
   if (!gl) return () => {};
   const sh = (type: number, src: string): WebGLShader => { const s = gl.createShader(type)!; gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s) ?? 'shader error'); return s; };
@@ -195,7 +203,8 @@ export function mountAurora(canvas: HTMLCanvasElement, { palette = 'night' }: { 
   gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
   const uT = gl.getUniformLocation(prog, 't');
   const uRes = gl.getUniformLocation(prog, 'res');
-  gl.uniform1f(gl.getUniformLocation(prog, 'brand'), ({ night: 0, brand: 1, deep: 2, clean: 3, ink: 4, light: 5 } as const)[palette]);
+  gl.uniform1f(gl.getUniformLocation(prog, 'wide'), wide ? 1 : 0);
+  gl.uniform1f(gl.getUniformLocation(prog, 'brand'), ({ night: 0, brand: 1, deep: 2, clean: 3, ink: 4, light: 5, overlay: 6 } as const)[palette]);
   let raf = 0;
   const t0 = performance.now() - 20000 * Math.random();
   const frame = () => {

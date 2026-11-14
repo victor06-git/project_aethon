@@ -260,3 +260,30 @@ h1, h2, h3 { margin: 0; }
 .k-back:hover { background: #f1faf3; }
 .k-head-orb { width: 28px; height: 28px; }
 .k-launcher.hidden { opacity: 0; pointer-events: none; }
+
+/* 13. Launch screens (every time the app opens). The bank screen itself never changes:
+   brand green, white wordmark in the middle. Revi only adds on top of it. */
+.splash { position: absolute; inset: 0; z-index: 60; display: grid; place-items: center; overflow: hidden; background: #00a846; transition: opacity .45s ease; }
+.splash.out { opacity: 0; pointer-events: none; }
+.sp-bank-mark { position: relative; z-index: 1; font-size: 34px; font-weight: 900; letter-spacing: -.02em; color: #fff; }
+/* Revi addition 1: soft northern lights rising from the bottom edge, fading upward */
+.sp-aurora { position: absolute; left: 0; width: 100%; opacity: 0; animation: spfade 1.2s ease .1s forwards; }
+.sp-aurora.bottom { bottom: -4%; height: 38%; -webkit-mask-image: linear-gradient(to top, #000 0, #000 35%, transparent 100%); mask-image: linear-gradient(to top, #000 0, #000 35%, transparent 100%); }
+.sp-aurora.band { top: 31%; height: 30%; -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 35%, #000 65%, transparent 100%); mask-image: linear-gradient(to bottom, transparent 0, #000 35%, #000 65%, transparent 100%); }
+/* Revi addition 2: a lockup under the wordmark. An aurora line draws itself from left to right
+   under "S-mobiili" and ends in "Revi", right-aligned like a sub-brand. The wordmark never moves. */
+.sp-center { position: relative; z-index: 1; }
+.sp-lock { position: absolute; top: calc(100% + 4px); left: 2px; right: 0; display: flex; align-items: center; gap: 6px; }
+.sp-line { flex: 1 1 0; min-width: 0; width: 0; height: 14px; overflow: visible; filter: drop-shadow(0 0 4px #d9ffeacc); }
+.sp-lock.echo .sp-line { height: 30px; }
+.sp-lock.echo { top: calc(100% + 2px); align-items: flex-start; }
+.sp-lock.echo .sp-revi { margin-top: 2px; }
+.sp-line path { fill: none; stroke: url(#spg); stroke-width: 2.2; stroke-linecap: round; stroke-dasharray: 1; stroke-dashoffset: 1; animation: spdraw .9s cubic-bezier(.65, 0, .35, 1) .45s forwards; }
+.sp-revi { font-size: 15px; font-weight: 850; letter-spacing: .01em; color: #fff; opacity: 0; transform: translateX(-6px); animation: sprise .5s cubic-bezier(.16, 1, .3, 1) 1.2s forwards; }
+.sp-under { position: absolute; top: calc(100% + 6px); left: 0; right: 0; text-align: center; font-size: 15px; font-weight: 850; color: #fff; opacity: 0; transform: translateY(6px); animation: sprise .5s cubic-bezier(.16, 1, .3, 1) .7s forwards; }
+.sp-footer { position: absolute; bottom: 64px; left: 0; right: 0; z-index: 1; text-align: center; font-size: 17px; font-weight: 850; color: #fff; opacity: 0; transform: translateY(8px); animation: sprise .6s cubic-bezier(.16, 1, .3, 1) .6s forwards; }
+.sp-footer span { font-weight: 600; color: #ffffffb3; }
+@keyframes spdraw { to { stroke-dashoffset: 0; } }
+@keyframes spfade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes sprise { to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .splash *, .splash { animation-duration: .01s !important; animation-delay: 0s !important; transition-duration: .01s !important; } }
