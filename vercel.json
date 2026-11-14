@@ -3,25 +3,21 @@
   "services": {
     "app": {
       "root": ".",
-      "framework": "vite"
+      "framework": "vite",
+      "installCommand": "npm ci",
+      "buildCommand": "npm run build:web",
+      "outputDirectory": "dist/web"
     },
-    "backend": {
-      "root": "backend",
-      "runtime": "python"
+    "api": {
+      "root": ".",
+      "runtime": "node",
+      "entrypoint": "backend/src/interfaces/http/vercel.ts",
+      "installCommand": "npm ci",
+      "buildCommand": "echo 'api: no build step, Vercel compiles the entrypoint'"
     }
   },
   "rewrites": [
-    {
-      "source": "/api/(.*)",
-      "destination": {
-        "service": "backend"
-      }
-    },
-    {
-      "source": "/(.*)",
-      "destination": {
-        "service": "app"
-      }
-    }
+    { "source": "/api/(.*)", "destination": { "service": "api" } },
+    { "source": "/(.*)", "destination": { "service": "app" } }
   ]
 }

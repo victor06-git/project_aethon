@@ -8,6 +8,7 @@ import { screensFor } from '../views/screens';
 import { StatusBar, Header, TabBar, Modal } from '../views/layout/Layout';
 import { Assistant } from '../views/revi/Assistant';
 import { Failed } from '../views/components';
+import { Splash, splashMs } from '../views/layout/Splash';
 
 interface Step { name: string; arg: string | null }
 type Intro = 'pending' | 'shown' | 'done';
@@ -22,11 +23,12 @@ export function PhoneController({ revi, label }: { revi: boolean; label: string 
   const [intro, setIntro] = useState<Intro>(revi ? 'pending' : 'done');
   const screenRef = useRef<HTMLElement>(null);
 
-  // Intro bubble next to the launcher: in after 0.7 s, out after ~5 s, once per visit.
+  // Intro bubble next to the launcher: in 0.7 s after the splash, out ~4.5 s later, once per visit.
   useEffect(() => {
     if (!revi) return;
-    const a = setTimeout(() => setIntro((s) => (s === 'pending' ? 'shown' : s)), 700);
-    const b = setTimeout(() => setIntro('done'), 5200);
+    const start = splashMs(true) + 500;
+    const a = setTimeout(() => setIntro((s) => (s === 'pending' ? 'shown' : s)), start + 700);
+    const b = setTimeout(() => setIntro('done'), start + 5200);
     return () => { clearTimeout(a); clearTimeout(b); };
   }, [revi]);
 
@@ -67,6 +69,7 @@ export function PhoneController({ revi, label }: { revi: boolean; label: string 
           </main>
           <TabBar active={stack.length ? null : tab.id} />
           {revi && <Assistant open={assistant === 'open'} intro={intro} />}
+          <Splash revi={revi} />
           {modal && <Modal title={modal.title} body={modal.body} onClose={() => setModal(null)} />}
         </section>
       </NavContext.Provider>

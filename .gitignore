@@ -226,3 +226,6 @@ __marimo__/
 node_modules/
 # S-Pankki dataset and its cache: large, licensed, never committed
 data/
+
+# Vercel build output and local project link
+.vercel/

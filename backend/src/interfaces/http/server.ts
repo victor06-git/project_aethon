@@ -7,8 +7,8 @@ import { createServer as createVite } from 'vite';
 import { config } from '../../config';
 import { createContainer } from '../../container';
 import { createLlm } from '../../infrastructure/llm';
-import { createKaikuCoach } from '../../infrastructure/llm/kaikuCoach';
 import { loadCsvTransactions } from '../../infrastructure/repositories/csvTransactions';
+import { handleApi } from './nodeAdapter';
 
 const log = (msg: string) => console.warn(`[revi] ${msg}`);
 
@@ -25,16 +25,10 @@ async function loadTransactions() {
   return repo;
 }
 
-const json = (res: http.ServerResponse, status: number, obj: unknown) => {
-  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-  res.end(JSON.stringify(obj));
-};
-
 async function main() {
   const transactions = await loadTransactions();
   const model = createLlm(config);
-  const kaiku = config.kaiku.url ? createKaikuCoach(config.kaiku) : null;
-  const app = createContainer({ transactions, model, kaiku, log });
+  const app = createContainer({ transactions, model, log });
   const server = http.createServer();
   // Vite serves the React app and live-reloads it over the same port (hot module replacement).
   const vite = await createVite({
@@ -47,23 +41,11 @@ async function main() {
     const url = new URL(req.url ?? '/', 'http://localhost');
     if (url.pathname === '/favicon.ico') { res.writeHead(204); return res.end(); }
     if (!url.pathname.startsWith('/api/')) return vite.middlewares(req, res);
-    let raw = '';
-    req.on('data', (c) => { raw += c; if (raw.length > 100_000) req.destroy(); });
-    req.on('end', async () => {
-      let body: unknown;
-      try { body = raw ? JSON.parse(raw) : undefined; } catch { return json(res, 400, { message: 'Bad JSON' }); }
-      try {
-        json(res, 200, await app.handle(req.method ?? 'GET', url.pathname, body, Object.fromEntries(url.searchParams)));
-      } catch (err: any) {
-        if (!err?.status) log(err?.stack ?? String(err));
-        json(res, err?.status ?? 500, { message: err?.status ? err.message : 'Internal error' });
-      }
-    });
+    void handleApi(app, req, res, log);
   });
   server.listen(config.port, () => {
     console.log(`Revi preview: http://localhost:${config.port}`);
     console.log(model ? `Coach model: ${config.provider} ${config.provider === 'gemini' ? config.gemini.model : ''} (rules as fallback)` : 'Coach model: off, rules only');
-    console.log(kaiku ? `Kaiku coach: ${config.kaiku.url} (letters + unsupported questions; local answers as fallback)` : 'Kaiku coach: off (set REVI_KAIKU_URL; see src/project_aethon/kaiku_service.py)');
   });
 }
 

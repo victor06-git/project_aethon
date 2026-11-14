@@ -1,0 +1,14 @@
+# Patterns are anchored with a leading slash: a bare "src" would also drop backend/src and frontend/src.
+# Offline Python model work (agent, eval, notebooks): not part of the deployed app.
+/backend/notebook
+/backend/src/project_aethon
+/backend/pyproject.toml
+/backend/requirements.txt
+/backend/uv.lock
+/backend/.python-version
+/notebook
+/src
+/temp_rf
+# Licensed dataset and local secrets: never uploaded.
+/data
+/.env

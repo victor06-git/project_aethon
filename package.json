@@ -7,6 +7,7 @@
   "scripts": {
     "start": "tsx backend/src/interfaces/http/server.ts",
     "build": "vite build --mode standalone",
+    "build:web": "vite build --mode production --outDir ../dist/web --emptyOutDir",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test \"tests/**/*.test.ts\"",
     "check:llm": "tsx tools/check-llm.ts"
