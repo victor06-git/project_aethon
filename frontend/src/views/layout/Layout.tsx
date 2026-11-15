@@ -22,9 +22,13 @@ const TABS: Tab[] = [
 ];
 
 
-export const StatusBar = () => (
-  <div className="status-bar"><span>9:41</span><span className="sb-icons"><i /><i /><i /><b /></span></div>
-);
+// The fake 9:41 status bar only on localhost: on a deployed site the page is opened on a real
+// phone, which already shows its own status bar.
+const isLocalhost = () => ['localhost', '127.0.0.1', '[::1]', '::1'].includes(window.location.hostname);
+
+export const StatusBar = () => (isLocalhost()
+  ? <div className="status-bar"><span>9:41</span><span className="sb-icons"><i /><i /><i /><b /></span></div>
+  : null);
 
 // Permanent header. No house icon next to the title — "S-mobiili" stays pinned and opens Home.
 export function Header({ subTitle }: { subTitle: string | null }) {
