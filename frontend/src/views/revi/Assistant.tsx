@@ -1,5 +1,5 @@
 // Revi assistant: launcher, suggested questions and conversation.
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import type { Answer } from '../../../../backend/src/domain/types';
 import { useModel } from '../../models/hooks';
 import type { ChatMessage } from '../../models/phoneModel';
@@ -131,7 +131,7 @@ function AnswerBubble({ a, previous, active }: { a: Answer; previous?: Answer; a
       {active && a.followUps && a.followUps.length > 0 && !a.goal && !a.plan && (
         <div className="k-chips">{a.followUps.slice(0, MAX_CHIPS).map((x) => <button key={x} type="button" disabled={busy} onClick={() => nav.ask(x)}>{x}</button>)}</div>
       )}
-      {a.source === 'model' && <div className="k-by">Explained by Gemini using Revi’s tools.</div>}
+      {a.source === 'model' && <div className="k-by">Explained by ChatGPT using Revi’s tools.</div>}
       {a.trace && a.trace.length > 0 && <TraceView steps={a.trace} />}
     </div>
   );
@@ -152,6 +152,22 @@ function Message({ m, previous, active }: { m: ChatMessage; previous?: Answer; a
   return <AnswerBubble a={m.answer} previous={previous} active={active} />;
 }
 
+// The question field grows with its text (up to a few lines, then it scrolls), so a long
+// question can be read back in full before sending.
+const INPUT_MAX_PX = 120;
+const INPUT_LINE_PX = 22;
+function fitInput(field: HTMLTextAreaElement) {
+  field.style.height = 'auto';
+  field.style.height = `${Math.min(field.scrollHeight, INPUT_MAX_PX)}px`;
+  field.style.overflowY = field.scrollHeight > INPUT_MAX_PX ? 'auto' : 'hidden';
+  // The compact chat sits above the field: lift it by as much as the field grew.
+  const grown = Math.max(0, field.offsetHeight - INPUT_LINE_PX);
+  (field.closest('.k-layer') as HTMLElement | null)?.style.setProperty('--k-input-grow', `${grown}px`);
+}
+
+// Above this height a reply no longer looks good over the banking screen: open the full chat.
+const TALL_REPLY_PX = 300;
+
 export function Assistant({ open, intro }: { open: boolean; intro: 'pending' | 'shown' | 'done' }) {
   const nav = useNav();
   const model = useModel();
@@ -166,8 +182,15 @@ export function Assistant({ open, intro }: { open: boolean; intro: 'pending' | '
   const last = chat.at(-1);
   const pending = last && 'pending' in last;
   // Compact chat first (slides out of the launcher, "Welcome to Revi!" and the questions above it);
-  // from the second question on it fills the screen with white and gets a back arrow.
-  const full = open && chat.filter((m) => m.role === 'user').length >= 2;
+  // from the second question on, or as soon as one reply is too tall for the compact view,
+  // it fills the screen with white and gets a back arrow.
+  const [tall, setTall] = useState(false);
+  const full = open && (tall || chat.filter((m) => m.role === 'user').length >= 2);
+  useLayoutEffect(() => {
+    if (!chat.length) { setTall(false); return; }
+    const stack = panel.current;
+    if (!tall && !pending && stack && stack.scrollHeight > TALL_REPLY_PX) setTall(true);
+  }, [chat.length, pending, layer.shown, tall]);
   useEffect(() => {
     if (!layer.shown) return;
     const from = document.activeElement;
@@ -188,8 +211,10 @@ export function Assistant({ open, intro }: { open: boolean; intro: 'pending' | '
     if (model.busy) return;
     const q = String(new FormData(e.currentTarget).get('q') ?? '').trim();
     e.currentTarget.reset();
+    const field = e.currentTarget.elements.namedItem('q') as HTMLTextAreaElement | null;
+    if (field) fitInput(field);
     if (q) {
-      (e.currentTarget.elements.namedItem('q') as HTMLInputElement | null)?.blur();
+      field?.blur();
       nav.ask(q);
     }
   };
@@ -236,7 +261,9 @@ export function Assistant({ open, intro }: { open: boolean; intro: 'pending' | '
             )}
           </div>
           <form className="k-input" onSubmit={submit}>
-            <input name="q" placeholder="Ask Revi about your money" autoComplete="off" aria-label="Ask Revi" maxLength={500} />
+            <textarea name="q" rows={1} placeholder="Ask Revi about your money" autoComplete="off" aria-label="Ask Revi" maxLength={500}
+              onInput={(e) => fitInput(e.currentTarget)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }} />
             <button type="submit" aria-label="Send" disabled={model.busy}><Icon name="send" size={18} /></button>
           </form>
         </div>

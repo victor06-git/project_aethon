@@ -165,8 +165,8 @@ h1, h2, h3 { margin: 0; }
 .k-layer[inert] { visibility: hidden; }
 .k-input { flex: none; display: flex; align-items: center; gap: 6px; min-height: 52px; margin: 8px 16px max(14px, env(safe-area-inset-bottom)); padding: 0 5px 0 16px; background: #fff; border: 1px solid #cfe8d6; border-radius: 26px; }
 .k-input:focus-within { border-color: var(--deep); box-shadow: 0 0 0 2px #bfe2c9; }
-.k-input input { flex: 1; min-width: 0; font-size: 16px; background: none; border: 0; outline: 0; }
-.k-input button { flex: none; width: 42px; height: 42px; display: grid; place-items: center; color: #fff; background: var(--green); border: 0; border-radius: 50%; }
+.k-input textarea { flex: 1; min-width: 0; align-self: center; height: 22px; max-height: 120px; padding: 0; margin: 13px 0; font: inherit; font-size: 16px; line-height: 22px; color: inherit; background: none; border: 0; outline: 0; resize: none; overflow-y: hidden; scrollbar-width: thin; }
+.k-input button { flex: none; align-self: flex-end; margin-bottom: 4px; width: 42px; height: 42px; display: grid; place-items: center; color: #fff; background: var(--green); border: 0; border-radius: 50%; }
 
 .k-stack { flex: 1; min-height: 0; padding: 12px 16px; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; overflow-anchor: none; }
 .k-welcome { padding: 16px 0; }
@@ -466,7 +466,7 @@ a.t-src:hover { text-decoration: underline; }
 .k-chips button, .t-review-actions button { min-height: 42px; }
 .phone.large .content, .phone.large .k-msg { zoom: 1.18; }
 .phone.large .k-starters small { font-size: 15px; }
-.phone.large .k-input input { font-size: 17px; }
+.phone.large .k-input textarea { font-size: 17px; }
 
 /* Embedded (phone width or ?embed): the app is the page. Full-bleed, at most 430px wide. */
 .stage.embed { min-height: 100dvh; padding: 0; gap: 0; }
@@ -544,10 +544,10 @@ a.t-src:hover { text-decoration: underline; }
 .k-layer.compact.open > * { pointer-events: auto; }
 .k-layer.compact::before { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 400px; background: linear-gradient(to top, rgba(250, 252, 250, .99) 0, rgba(250, 252, 250, .96) 70%, rgba(250, 252, 250, 0) 100%); opacity: 0; transition: opacity .35s ease; pointer-events: none; }
 .k-layer.compact.open::before { opacity: 1; }
-.k-layer.compact .k-stack { position: absolute; left: 16px; right: 16px; bottom: 146px; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; max-height: calc(100% - 170px); padding: 4px 2px 10px; overflow: auto; scrollbar-width: none; opacity: 0; transform: translateY(10px); transition: transform .45s cubic-bezier(.16, 1, .3, 1) .18s, opacity .3s ease .18s; }
+.k-layer.compact .k-stack { position: absolute; left: 16px; right: 16px; bottom: calc(146px + var(--k-input-grow, 0px)); display: flex; flex-direction: column; align-items: flex-start; gap: 6px; max-height: calc(100% - 170px); padding: 4px 2px 10px; overflow: auto; scrollbar-width: none; opacity: 0; transform: translateY(10px); transition: transform .45s cubic-bezier(.16, 1, .3, 1) .18s, opacity .3s ease .18s; }
 .k-layer.compact.open .k-stack { opacity: 1; transform: none; }
 .k-layer.compact .k-msgs { display: flex; flex-direction: column; gap: 8px; width: 100%; }
-.k-layer.compact .k-input { position: absolute; right: 80px; bottom: 82px; width: calc(100% - 100px); height: 52px; min-height: 0; margin: 0; box-shadow: 0 10px 28px #0b3a2026; opacity: 0; clip-path: inset(0 0 0 100% round 26px); transition: clip-path .5s cubic-bezier(.16, 1, .3, 1), opacity .2s ease; }
+.k-layer.compact .k-input { position: absolute; right: 80px; bottom: 82px; width: calc(100% - 100px); height: auto; min-height: 52px; margin: 0; box-shadow: 0 10px 28px #0b3a2026; opacity: 0; clip-path: inset(0 0 0 100% round 26px); transition: clip-path .5s cubic-bezier(.16, 1, .3, 1), opacity .2s ease; }
 .k-layer.compact.open .k-input { opacity: 1; clip-path: inset(0 0 0 0 round 26px); }
 .k-hello { padding: 0 4px; font-size: 16px; font-weight: 850; color: var(--deep); text-shadow: 0 0 6px #fff, 0 0 2px #fff; }
 .k-flow { margin: 0; font-size: 12px; font-weight: 650; line-height: 2.05; color: #1d3a28; }
