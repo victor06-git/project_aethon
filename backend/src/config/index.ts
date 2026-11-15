@@ -21,9 +21,14 @@ function loadDotEnv(file: string) {
 loadDotEnv(path.join(ROOT, '.env'));
 const env = process.env;
 const apiKey = env.GEMINI_API_KEY || env.GOOGLE_API_KEY || '';
-// auto: Gemini when a key is present, otherwise rules only. "none" switches the model off.
+const openaiKey = env.OPENAI_API_KEY || '';
+const anthropicKey = env.ANTHROPIC_API_KEY || '';
+// auto: Claude when ANTHROPIC_API_KEY is set, else ChatGPT, else Gemini, otherwise rules only.
+// "none" switches the model off.
 const wanted = (env.REVI_LLM_PROVIDER || 'auto').toLowerCase();
-const provider = wanted === 'auto' ? (apiKey ? 'gemini' : env.REVI_LLM_URL ? 'openai' : 'none') : wanted;
+const provider = wanted === 'auto'
+  ? (anthropicKey ? 'claude' : openaiKey ? 'chatgpt' : apiKey ? 'gemini' : env.REVI_LLM_URL ? 'openai' : 'none')
+  : wanted;
 const resolve = (p: string) => (path.isAbsolute(p) ? p : path.join(ROOT, p));
 const timeout = (value: string | undefined, fallback: number) => {
   const ms = Number(value);
@@ -49,6 +54,22 @@ export const config = {
     timeoutMs: timeout(env.REVI_LLM_TIMEOUT_MS, 8000),
     // The whole trainer turn shares this deadline, including waits and follow-up model calls.
     agentTimeoutMs: timeout(env.REVI_AGENT_TIMEOUT_MS, 20000)
+  },
+  // ChatGPT (OpenAI API): the trainer agent (function calling) and the question classifier.
+  chatgpt: {
+    apiKey: openaiKey,
+    model: env.OPENAI_MODEL || 'gpt-4.1-mini',
+    baseUrl: env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
+    timeoutMs: timeout(env.OPENAI_TIMEOUT_MS, 15000),
+    agentTimeoutMs: timeout(env.REVI_AGENT_TIMEOUT_MS, 20000)
+  },
+  // Claude (Anthropic API): trainer agent with tool use.
+  claude: {
+    apiKey: anthropicKey,
+    model: env.ANTHROPIC_MODEL || 'claude-sonnet-4-5',
+    baseUrl: env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com',
+    timeoutMs: timeout(env.ANTHROPIC_TIMEOUT_MS, 20000),
+    agentTimeoutMs: timeout(env.REVI_AGENT_TIMEOUT_MS, 45000)
   },
   // Exa web search: live prices and benchmarks for the trainer. Off without a key.
   exa: { apiKey: env.EXA_API_KEY || '', baseUrl: env.REVI_EXA_BASE_URL || 'https://api.exa.ai', timeoutMs: Number(env.REVI_EXA_TIMEOUT_MS) || 8000 },

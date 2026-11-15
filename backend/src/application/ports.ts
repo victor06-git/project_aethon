@@ -81,8 +81,9 @@ export interface AgentRequest {
   maxSteps?: number;
 }
 
-/** A model that answers by calling tools until it can reply in text. Adapter: llm/geminiAgent (Gemini function calling). */
+/** A model that answers by calling tools until it can reply in text. Adapters: llm/openaiAgent (ChatGPT), llm/geminiAgent (Gemini). */
 export interface AgentModel {
+  name?: string;                          // shown in the trace, e.g. "ChatGPT is reading your question"
   run(request: AgentRequest): Promise<string>;
 }
 

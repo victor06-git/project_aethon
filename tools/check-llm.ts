@@ -19,30 +19,35 @@ async function checkClassifier(started: number) {
 
 async function checkTrainer(started: number) {
   const wanted = process.env.REVI_LLM_PROVIDER?.toLowerCase();
-  if (config.provider !== 'gemini' && wanted && wanted !== 'auto') {
-    throw new Error('Gemini is disabled. Use REVI_LLM_PROVIDER=gemini or auto to check the trainer.');
+  if (config.provider !== 'gemini' && config.provider !== 'chatgpt' && wanted && wanted !== 'auto') {
+    throw new Error('The trainer model is disabled. Use REVI_LLM_PROVIDER=chatgpt, gemini or auto to check it.');
   }
-  if (!config.gemini.apiKey.trim()) throw new Error('Set GEMINI_API_KEY or GOOGLE_API_KEY to check the Gemini trainer.');
+  const chatgpt = config.provider === 'chatgpt';
+  const who = chatgpt ? `ChatGPT ${config.chatgpt.model}` : `Gemini ${config.gemini.model}`;
+  if (chatgpt ? !config.chatgpt.apiKey.trim() : !config.gemini.apiKey.trim()) {
+    throw new Error('Set OPENAI_API_KEY (ChatGPT) or GEMINI_API_KEY (Gemini) to check the trainer.');
+  }
 
   let answer;
   try {
     const app = createContainer({ agent: createAgent({ ...config, gemini: { ...config.gemini, fallbackModel: '' } }) });
     ({ answer } = await app.trainer.chat({ messages: [{ role: 'user', text: question || 'What can I safely spend this week?' }] }));
   } catch {
-    throw new Error('Gemini trainer check failed. Check the configured model, credentials, and quota.');
+    throw new Error(`${who} trainer check failed. Check the configured model, credentials, and quota.`);
   }
   const trace = answer.trace ?? [];
-  if (trace.some((step) => step.kind === 'model' && step.status === 'failed')) {
-    throw new Error('The configured Gemini model did not complete and the trainer used its built-in rules. Check model access and quota.');
+  const failed = trace.find((step) => step.kind === 'model' && step.status === 'failed');
+  if (failed) {
+    throw new Error(`${who} did not complete and the trainer used its built-in rules (${failed.detail ?? 'no detail'}). Check model access and quota.`);
   }
   if (answer.source !== 'model' || trace.some((step) => step.kind === 'rules')) {
     throw new Error('The trainer returned a rules-based answer. Ask a question that requires a tool, such as the default safe-to-spend question.');
   }
   if (!trace.some((step) => step.kind === 'model' && step.status === 'done') ||
       !trace.some((step) => step.kind === 'tool' && step.status === 'done')) {
-    throw new Error('Gemini responded without completing a trainer tool. Use the default safe-to-spend question to verify tool calling.');
+    throw new Error(`${who} responded without completing a trainer tool. Use the default safe-to-spend question to verify tool calling.`);
   }
-  console.log(`Gemini ${config.gemini.model} completed the trainer tool and answer on demo data (${Date.now() - started} ms).`);
+  console.log(`${who} completed the trainer tool and answer on demo data (${Date.now() - started} ms).`);
 }
 
 try {

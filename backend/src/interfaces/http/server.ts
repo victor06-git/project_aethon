@@ -49,9 +49,13 @@ async function main() {
   });
   server.listen(config.port, () => {
     console.log(`Revi preview: http://localhost:${config.port}`);
-    console.log(agent ? `Trainer: Gemini ${config.gemini.model} with tools (rules as fallback)` : 'Trainer: rules only (set GEMINI_API_KEY for Gemini)');
+    const modelName = config.provider === 'claude' ? config.claude.model
+      : config.provider === 'chatgpt' ? config.chatgpt.model
+      : config.provider === 'gemini' ? config.gemini.model
+      : '';
+    console.log(agent ? `Trainer: ${agent.name} ${modelName} with tools (rules as fallback)` : 'Trainer: rules only (set ANTHROPIC_API_KEY or OPENAI_API_KEY)');
     console.log(research ? 'Web research: Exa' : 'Web research: off (set EXA_API_KEY)');
-    console.log(model ? `Coach model: ${config.provider} ${config.provider === 'gemini' ? config.gemini.model : ''} (rules as fallback)` : 'Coach model: off, rules only');
+    console.log(model ? `Coach model: ${config.provider} ${modelName} (rules as fallback)` : 'Coach model: off, rules only');
   });
 }
 

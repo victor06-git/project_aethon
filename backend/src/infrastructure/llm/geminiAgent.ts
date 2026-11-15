@@ -5,6 +5,8 @@ import { GoogleGenAI, ThinkingLevel, type Content, type FunctionCall, type Gener
 import type { AgentModel, AgentRequest } from '../../application/ports';
 import type { Config } from '../../config';
 import { createGeminiRequests } from './geminiRequests';
+import { createClaudeAgentFromConfig } from './claudeAgent';
+import { createOpenAiAgentFromConfig } from './openaiAgent';
 
 const DEFAULT_MAX_STEPS = 6;
 const TEMPERATURE = 0.2;
@@ -29,6 +31,7 @@ export function createGeminiAgent({ apiKey, model, fallbackModel, baseUrl, timeo
   const ai: GeminiClient = client ?? new GoogleGenAI({ apiKey, httpOptions: { ...(baseUrl ? { baseUrl } : {}), retryOptions: { attempts: 1 } } });
   const { startTurn } = createGeminiRequests({ model, fallbackModel, timeoutMs, requestTimeoutMs });
   return {
+    name: 'Gemini',
     async run({ system, turns, tools, execute, maxSteps = DEFAULT_MAX_STEPS }: AgentRequest): Promise<string> {
       const request = startTurn();
       const config: GenerateContentConfig = {
@@ -69,8 +72,10 @@ export function createGeminiAgent({ apiKey, model, fallbackModel, baseUrl, timeo
   };
 }
 
-/** Null when no Gemini key is configured (or the model is switched off): the trainer then uses its rules. */
+/** Null when no model key is configured (or the model is switched off): the trainer then uses its rules. */
 export function createAgent(config: Config): AgentModel | null {
+  if (config.provider === 'claude') return createClaudeAgentFromConfig(config);
+  if (config.provider === 'chatgpt') return createOpenAiAgentFromConfig(config);
   if (config.provider !== 'gemini' || !config.gemini.apiKey) return null;
   return createGeminiAgent({ ...config.gemini, timeoutMs: config.gemini.agentTimeoutMs, requestTimeoutMs: config.gemini.timeoutMs });
 }
