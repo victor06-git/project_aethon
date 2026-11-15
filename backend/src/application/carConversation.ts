@@ -10,7 +10,7 @@ import type { Answer, ChatPlanner, ChatTurn } from '../domain/types';
 import type { ToolCall } from './ports';
 
 const CAR = /(?:\bcar\b|\bauto\b|машин|авто|vehicle|ajoneuvo)/i;
-const WANTS = /(?:\bwant\b|\bneed\b|\bbuy\b|\bafford\b|purchase|save (?:up )?for|\bget (?:a |an )?|куп|хочу|нужн|приобрест|hankkia|ostaa|haluan)/i;
+const WANTS = /(?:\bwant\b|\bneed\b|\bbuy\b|\bafford\b|purchase|invest(?:ing|ment)?(?:\s+in)?|save (?:up )?for|\bget (?:a |an )?|куп|хочу|нужн|приобрест|инвестир|влож|hankkia|ostaa|haluan|sijoittaa)/i;
 const wantsCar = (t: string) => CAR.test(t) && WANTS.test(t);
 
 const LOAN_YEARS = 4;

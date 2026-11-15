@@ -63,6 +63,8 @@ function monthsIn(q: string): number | undefined {
 
 const CAR_TARGET = /\b(?:cars?|auto|vehicle|hatchback|estate|suv|sedan|toyota|volkswagen|volvo|skoda|škoda|hyundai|kia|nissan|honda|tesla|mazda|ford|peugeot|renault|audi|bmw|mercedes|opel|seat|dacia)\b/i;
 const BUY = /\b(?:buy(?:ing)?|afford|purchase|save (?:up )?for)\b/i;
+// "invest in a car" / «инвестировать в машину» = car purchase goal (not the Invest tab).
+const INVEST_CAR = /\binvest(?:ing|ment)?\s+(?:in(?:to)?|to|on)\s+(?:an?\s+|the\s+|my\s+|own\s+)?(?:used\s+|new\s+|big\s+)?(?:cars?|auto|vehicle)\b|инвестир\w*\s+в\s+(?:машин|авто)|влож\w*\s+в\s+(?:машин|авто)/i;
 // "invest in/to/into an apartment": a property is a purchase goal (shares and funds are not).
 const PROPERTY = /\binvest(?:ing)?\s+(?:in(?:to)?|to|on)\s+(?:an?\s+|the\s+|my\s+|own\s+)?(apartment|flat|house|home|property|real estate|cottage|summer cottage|studio)\b/i;
 const RESEARCH = /\b(?:look[ -]?up|research|check (?:current|real|live|listing|market|prices?)|real (?:price|cost)|live (?:prices?|listings?)|(?:find|show|compare) (?:me )?(?:an?|some|the|current|used|new|available)|options|offers|listings)\b/i;
@@ -183,6 +185,9 @@ export async function ruleCall(text: string, ctx: RuleContext, rules: QuestionCl
   const rename = ctx.goal && purchaseName(text, 'switch to|change (?:it|the goal) to|make it|instead (?:buy|look for)|look for|find(?: me)?|what about');
   if (rename && !/\b(?:months?|years?|loans?|spending)\b/i.test(rename) && (ctx.goal?.kind === 'purchase' || CAR_TARGET.test(rename))) {
     return call('what_if', { ...change, name: rename });
+  }
+  if (INVEST_CAR.test(q) && !/\bwhat if\b/.test(q)) {
+    return call('simulate_goal', { kind: 'car', name: 'car', ...(money(q) !== undefined ? { price: money(q) } : {}), ...(monthsIn(q) !== undefined ? { months: monthsIn(q) } : {}) });
   }
   const property = q.match(PROPERTY);
   if (property && !/\bwhat if\b/.test(q)) {

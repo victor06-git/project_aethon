@@ -428,8 +428,8 @@ export function createTrainerTools({ transactions, external, coach, research, lo
         };
       }
       const text = sources.length
-        ? `I found ${sources.length} source${sources.length === 1 ? '' : 's'} for "${query}": ${[...new Set(sources.map((s) => host(s.url)))].join(', ')}.`
-        : `I found nothing reliable for "${query}".`;
+        ? `I looked this up. ${sources.length} source${sources.length === 1 ? '' : 's'} for "${query}": ${[...new Set(sources.map((s) => host(s.url)))].join(', ')}. If the exact figure is missing, say so briefly and share the closest useful findings from the passages.`
+        : `No exact match for "${query}". Say that briefly, share any safe general guidance you can, and invite a narrower question — do not stop at "I don't know".`;
       return { answer: { type: 'research', text, sources }, state, sources, activity: [`Asked Exa: ${query}`] };
     },
 
@@ -645,7 +645,7 @@ export const TOOL_SPECS: ToolSpec[] = [
     cost_id: choice(RUNNING_COST_IDS, 'A running cost the user corrects.'),
     cost_monthly: num('Its cost in euros a month.')
   }),
-  spec('search_web', 'Search the web (Exa) for real prices, loan terms, insurance costs or Finnish and European averages. Returns passages with their URL.', {
+  spec('search_web', 'Search the web (Exa) for prices, loan terms, insurance, Finnish/EU averages, or any concrete outside-world finance question when no other tool fits. Prefer this over saying you cannot help. Returns passages with their URL.', {
     query: text('A specific query, e.g. "average used car price Finland 2026" or "Statistics Finland household food spending per month".')
   }, ['query']),
   spec('research_goal', 'Research the current goal on the web with Exa: current options and typical price, running costs beyond the price, loan conditions. Every figure comes with its source and is applied to the goal.'),
